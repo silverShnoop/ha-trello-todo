@@ -1,0 +1,54 @@
+move_card:
+  target:
+    entity:
+      integration: trello_todo
+      domain: todo
+  fields:
+    card_id:
+      required: true
+      selector:
+        text:
+    list:
+      required: true
+      example: Doing
+      selector:
+        text:
+set_members:
+  target:
+    entity:
+      integration: trello_todo
+      domain: todo
+  fields:
+    card_id:
+      required: true
+      selector:
+        text:
+    members:
+      required: true
+      example: '["James"]'
+      selector:
+        object:
+add_card:
+  target:
+    entity:
+      integration: trello_todo
+      domain: todo
+  fields:
+    name:
+      required: true
+      selector:
+        text:
+    list:
+      example: To do
+      selector:
+        text:
+    members:
+      selector:
+        object:
+    due:
+      selector:
+        datetime:
+    description:
+      selector:
+        text:
+          multiline: true

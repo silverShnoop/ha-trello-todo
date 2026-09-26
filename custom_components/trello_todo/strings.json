@@ -1,0 +1,102 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Trello",
+        "description": "Trello needs an API key from a Power-Up you own. Open the [Power-Up admin portal]({admin_url}), choose **New**, fill in the form (leave the Iframe connector URL blank), then open **API key** and generate one. Paste it below.",
+        "data": { "api_key": "API key" }
+      },
+      "token": {
+        "title": "Authorise Home Assistant",
+        "description": "[Click here to authorise]({auth_url}) Home Assistant to read and update your boards, then paste the token Trello shows you.",
+        "data": { "token": "Token" }
+      },
+      "boards": {
+        "title": "Choose boards",
+        "description": "Each board becomes one to-do list in Home Assistant.",
+        "data": {
+          "boards": "Boards",
+          "use_webhook": "Instant updates via webhook (needs Nabu Casa or an external URL; otherwise polls every minute)"
+        }
+      },
+      "lists": {
+        "title": "Columns on {board}",
+        "description": "Ticking a task in Home Assistant moves its card to the Done column. New tasks are added to the second column you pick.",
+        "data": {
+          "done_lists": "Done column",
+          "default_lists": "Column for new tasks"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Trello rejected the key or token.",
+      "cannot_connect": "Couldn't reach Trello.",
+      "unknown": "Unexpected error from Trello.",
+      "no_boards": "Pick at least one board."
+    },
+    "abort": {
+      "already_configured": "This Trello account is already set up.",
+      "reauth_successful": "Token updated.",
+      "wrong_account": "That token belongs to a different Trello account.",
+      "cannot_connect": "Couldn't reach Trello."
+    }
+  },
+  "options": {
+    "step": {
+      "boards": {
+        "title": "Choose boards",
+        "description": "Each board becomes one to-do list in Home Assistant.",
+        "data": {
+          "boards": "Boards",
+          "use_webhook": "Instant updates via webhook (needs Nabu Casa or an external URL; otherwise polls every minute)"
+        }
+      },
+      "lists": {
+        "title": "Columns on {board}",
+        "description": "Ticking a task in Home Assistant moves its card to the Done column. New tasks are added to the second column you pick.",
+        "data": {
+          "done_lists": "Done column",
+          "default_lists": "Column for new tasks"
+        }
+      }
+    },
+    "error": { "no_boards": "Pick at least one board." },
+    "abort": { "cannot_connect": "Couldn't reach Trello." }
+  },
+  "entity": {
+    "sensor": {
+      "open": { "name": "Open tasks" },
+      "overdue": { "name": "Overdue tasks" },
+      "due_today": { "name": "Due today" }
+    }
+  },
+  "services": {
+    "move_card": {
+      "name": "Move card",
+      "description": "Move a Trello card to another column.",
+      "fields": {
+        "card_id": { "name": "Card ID", "description": "The card's id (the to-do item uid)." },
+        "list": { "name": "Column", "description": "Column name or id, e.g. Doing." }
+      }
+    },
+    "set_members": {
+      "name": "Set assignees",
+      "description": "Replace who a card is assigned to.",
+      "fields": {
+        "card_id": { "name": "Card ID", "description": "The card's id (the to-do item uid)." },
+        "members": { "name": "Members", "description": "Names, usernames or ids. Empty to unassign." }
+      }
+    },
+    "add_card": {
+      "name": "Add card",
+      "description": "Add a card to a chosen column, optionally assigned and with a due date.",
+      "fields": {
+        "name": { "name": "Name", "description": "Task title." },
+        "list": { "name": "Column", "description": "Column name or id. Defaults to the new-tasks column." },
+        "members": { "name": "Members", "description": "Names, usernames or ids to assign." },
+        "due": { "name": "Due", "description": "Due date or date and time." },
+        "description": { "name": "Description", "description": "Card description." }
+      }
+    }
+  }
+}

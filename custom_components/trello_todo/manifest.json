@@ -1,0 +1,21 @@
+{
+  "domain": "trello_todo",
+  "name": "Trello To-do",
+  "after_dependencies": [
+    "cloud"
+  ],
+  "codeowners": [
+    "@silverShnoop"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "http",
+    "webhook"
+  ],
+  "documentation": "https://github.com/silverShnoop/ha-trello-todo",
+  "integration_type": "service",
+  "iot_class": "cloud_push",
+  "issue_tracker": "https://github.com/silverShnoop/ha-trello-todo/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
