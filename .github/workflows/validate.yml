@@ -10,9 +10,13 @@ jobs:
     name: HACS
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: hacs/action@main
         with:
           category: integration
+          # No brands entry yet: an integration has to be published before
+          # home-assistant/brands will accept a PR for it.
+          ignore: brands
 
   hassfest:
     name: Hassfest
