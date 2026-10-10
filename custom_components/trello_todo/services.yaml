@@ -25,7 +25,7 @@ set_members:
         text:
     members:
       required: true
-      example: '["James"]'
+      example: '["Morgan"]'
       selector:
         object:
 add_card:

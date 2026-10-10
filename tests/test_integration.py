@@ -60,7 +60,7 @@ async def test_config_flow(hass: HomeAssistant, trello) -> None:
         result["flow_id"], {CONF_DONE_LISTS: "l_done", CONF_DEFAULT_LISTS: "l_todo"}
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Trello (James Barker)"
+    assert result["title"] == "Trello (Morgan Example)"
     assert result["options"] == {
         CONF_BOARDS: [BOARD_ID],
         CONF_USE_WEBHOOK: False,
@@ -94,7 +94,7 @@ async def test_entities_and_state(hass: HomeAssistant, trello, entry) -> None:
     assert board["done"] == "l_done"
     assert board["default"] == "l_todo"
     assert [c["id"] for c in board["cards"]] == ["c1", "c2", "c3"]
-    assert board["cards"][0]["members"] == ["m_james"]
+    assert board["cards"][0]["members"] == ["m_morgan"]
     assert board["members"][1]["name"] == "Sam Barker"
 
     items = await hass.services.async_call(
@@ -178,12 +178,12 @@ async def test_card_services(hass: HomeAssistant, trello, entry) -> None:
     assert len(_calls(trello, "DELETE", "/cards/c1/idMembers/m_james")) == 1
 
     await hass.services.async_call(
-        DOMAIN, "add_card", {"name": "Paint fence", "list": "Doing", "members": ["james"]},
+        DOMAIN, "add_card", {"name": "Paint fence", "list": "Doing", "members": ["morgan"]},
         target={"entity_id": ENTITY}, blocking=True,
     )
     (call,) = _calls(trello, "POST", "/cards")
     assert call[1].query["idList"] == "l_doing"
-    assert call[1].query["idMembers"] == "m_james"
+    assert call[1].query["idMembers"] == "m_morgan"
 
 
 async def test_unknown_column_is_a_clear_error(hass: HomeAssistant, trello, entry) -> None:
