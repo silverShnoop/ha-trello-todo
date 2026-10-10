@@ -48,7 +48,7 @@ BOARD: dict[str, Any] = {
         },
     ],
     "members": [
-        {"id": "m_morgan", "fullName": "Morgan Example", "initials": "JB", "username": "morgan", "avatarUrl": None},
+        {"id": "m_morgan", "fullName": "Morgan Example", "initials": "ME", "username": "morgan", "avatarUrl": None},
         {"id": "m_wife", "fullName": "Sam Barker", "initials": "SB", "username": "sam", "avatarUrl": None},
     ],
     "labels": [{"id": "lb1", "name": "Garden", "color": "green"}],

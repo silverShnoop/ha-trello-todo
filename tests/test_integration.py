@@ -158,7 +158,7 @@ async def test_card_services(hass: HomeAssistant, trello, entry) -> None:
     """move_card / set_members / add_card resolve names to ids."""
     trello.put(f"{API}/cards/c1", json={})
     trello.post(f"{API}/cards/c1/idMembers", json=[])
-    trello.delete(f"{API}/cards/c1/idMembers/m_james", json=[])
+    trello.delete(f"{API}/cards/c1/idMembers/m_morgan", json=[])
     trello.post(f"{API}/cards", json={"id": "new"})
     await _setup(hass, entry)
 
@@ -175,7 +175,7 @@ async def test_card_services(hass: HomeAssistant, trello, entry) -> None:
     )
     (add,) = _calls(trello, "POST", "/cards/c1/idMembers")
     assert add[1].query["value"] == "m_wife"
-    assert len(_calls(trello, "DELETE", "/cards/c1/idMembers/m_james")) == 1
+    assert len(_calls(trello, "DELETE", "/cards/c1/idMembers/m_morgan")) == 1
 
     await hass.services.async_call(
         DOMAIN, "add_card", {"name": "Paint fence", "list": "Doing", "members": ["morgan"]},
