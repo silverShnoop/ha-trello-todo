@@ -55,11 +55,11 @@ data: {card_id: 64f0…, list: Doing}
 
 action: trello_todo.set_members          # replaces the assignees; [] to clear
 target: {entity_id: todo.chores}
-data: {card_id: 64f0…, members: [James]}
+data: {card_id: 64f0…, members: [Morgan]}
 
 action: trello_todo.add_card
 target: {entity_id: todo.chores}
-data: {name: Paint the fence, list: Doing, members: [James, Sam], due: "2026-10-04"}
+data: {name: Paint the fence, list: Doing, members: [Morgan, Sam], due: "2026-10-04"}
 ```
 
 `card_id` is the to-do item's `uid`.

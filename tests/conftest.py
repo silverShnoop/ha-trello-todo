@@ -33,7 +33,7 @@ BOARD: dict[str, Any] = {
     "cards": [
         {
             "id": "c1", "name": "Bins out", "desc": "", "due": "2020-01-01T09:00:00.000Z",
-            "dueComplete": False, "idList": "l_todo", "idMembers": ["m_james"],
+            "dueComplete": False, "idList": "l_todo", "idMembers": ["m_morgan"],
             "idLabels": [], "pos": 100, "shortUrl": "https://trello.com/c/1",
         },
         {
@@ -48,7 +48,7 @@ BOARD: dict[str, Any] = {
         },
     ],
     "members": [
-        {"id": "m_james", "fullName": "James Barker", "initials": "JB", "username": "james", "avatarUrl": None},
+        {"id": "m_morgan", "fullName": "Morgan Example", "initials": "ME", "username": "morgan", "avatarUrl": None},
         {"id": "m_wife", "fullName": "Sam Barker", "initials": "SB", "username": "sam", "avatarUrl": None},
     ],
     "labels": [{"id": "lb1", "name": "Garden", "color": "green"}],
@@ -70,7 +70,7 @@ def board() -> dict[str, Any]:
 @pytest.fixture
 def trello(aioclient_mock, board):
     """Serve the fake board and accept writes."""
-    aioclient_mock.get(f"{API}/members/me", json={"id": "me1", "fullName": "James Barker", "username": "james"})
+    aioclient_mock.get(f"{API}/members/me", json={"id": "me1", "fullName": "Morgan Example", "username": "morgan"})
     aioclient_mock.get(f"{API}/members/me/boards", json=[{"id": BOARD_ID, "name": "Chores", "url": board["url"]}])
     aioclient_mock.get(f"{API}/boards/{BOARD_ID}/lists", json=board["lists"])
     aioclient_mock.get(f"{API}/boards/{BOARD_ID}", json=board)
@@ -84,7 +84,7 @@ def entry() -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
         unique_id="me1",
-        title="Trello (James Barker)",
+        title="Trello (Morgan Example)",
         data={CONF_API_KEY: "key", CONF_TOKEN: "tok"},
         options={
             CONF_BOARDS: [BOARD_ID],
