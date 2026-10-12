@@ -34,6 +34,7 @@ from .routines import (
     is_done,
     plan_rollover,
     routine_days,
+    ticks_in_place,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -81,8 +82,12 @@ class TrelloCoordinator(DataUpdateCoordinator[dict[str, TrelloBoard]]):
         return routine_days(card, board) is not None
 
     def is_done(self, card: TrelloCard, board: TrelloBoard) -> bool:
-        """Ticked (routine) or in the Done column (anything else)."""
+        """Ticked (routine, or any card on a one-column board) or in the Done column."""
         return is_done(card, board, self.done_list_id(board))
+
+    def ticks_in_place(self, card: TrelloCard, board: TrelloBoard) -> bool:
+        """Is finishing this card a tick rather than a move?"""
+        return ticks_in_place(card, board, self.done_list_id(board))
 
     @property
     def board_ids(self) -> list[str]:
@@ -147,9 +152,18 @@ class TrelloCoordinator(DataUpdateCoordinator[dict[str, TrelloBoard]]):
     async def _async_roll_over(self, board: TrelloBoard) -> None:
         """Advance any routine whose day has passed. Idempotent, so safe on every poll."""
         now = dt_util.now()
-        for update in plan_rollover(board, now, self.routine_settings):
+        for update in plan_rollover(board, now, self.routine_settings, self.done_list_id(board)):
             card = board.card_by_id(update.card_id)
             if card is None:
+                continue
+            if update.archive:
+                try:
+                    await self.client.archive_card(card.id)
+                except TrelloError as err:
+                    _LOGGER.warning("Could not archive '%s': %s", card.name, err)
+                    continue
+                board.cards.remove(card)
+                _LOGGER.debug("Archived finished card '%s'", card.name)
                 continue
             fields: dict[str, Any] = {"due": update.due}
             if update.clear_done:

@@ -303,10 +303,15 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
             fields["due"] = new_due if new_due else "null"
 
         wants_done = item.status == TodoItemStatus.COMPLETED
-        if self.coordinator.is_routine(card, board):
-            # A routine never leaves its column: the tick is the due date's.
+        if self.coordinator.ticks_in_place(card, board):
+            # A routine never leaves its column, and on a one-column board
+            # nothing does: the tick is the due date's. A one-off with no
+            # due date is given now as one, so Trello has something to
+            # show the tick on.
             if wants_done != card.due_complete:
                 fields["dueComplete"] = wants_done
+                if wants_done and card.due is None and "due" not in fields:
+                    fields["due"] = dt_util.now()
         elif wants_done and card.list_id != done and done:
             fields["idList"] = done
             fields["pos"] = "top"

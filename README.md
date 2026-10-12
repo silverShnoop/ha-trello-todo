@@ -66,6 +66,11 @@ A routine never leaves its column, so the board needs no extra lists:
   over* in the options and a missed routine resets to its next day instead.
 
 Ordinary cards (no day label) still complete by moving to the Done column.
+On a board with **one column** there is nowhere to move to, so they tick in
+place too: the tick marks the due date complete (a card without one is
+given the moment of ticking), it stays visible for the rest of that day,
+and at the next rollover HA archives it. Trello keeps the archive, so
+nothing is lost, and the column empties itself overnight.
 `sensor.<board>_overdue_tasks` and `_due_today` count routines by their
 deadline, which is what a "needs attention" badge wants. In the `board`
 attribute each card carries `routine` (its weekday numbers, Mon = 0, or

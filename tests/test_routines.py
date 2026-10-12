@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
-from custom_components.trello_todo.api import TrelloBoard, TrelloCard, TrelloLabel
+from custom_components.trello_todo.api import TrelloBoard, TrelloCard, TrelloLabel, TrelloList
 from custom_components.trello_todo.routines import (
     RoutineSettings,
     is_done,
@@ -34,8 +34,11 @@ def card(
     )
 
 
-def board(*cards: TrelloCard) -> TrelloBoard:
-    return TrelloBoard(id="b", name="Chores", url="", lists=[], cards=list(cards), labels=LABELS)
+LISTS = [TrelloList("l_todo", "To do", 1), TrelloList("l_done", "Done", 2)]
+
+
+def board(*cards: TrelloCard, lists: list[TrelloList] = LISTS) -> TrelloBoard:
+    return TrelloBoard(id="b", name="Chores", url="", lists=lists, cards=list(cards), labels=LABELS)
 
 
 def at(day: int, hour: int, minute: int = 0) -> datetime:
@@ -139,3 +142,21 @@ def test_relabelled_card_moves_to_a_matching_day() -> None:
 def test_idempotent_and_ignores_ordinary_cards() -> None:
     b = board(card("cat", ["lb_daily"], at(12, 19)), card("gate", ["lb_garden"], at(1, 9)))
     assert plan_rollover(b, at(12, 10), SETTINGS) == []
+
+
+def test_one_column_board_ticks_everything_in_place() -> None:
+    one = [TrelloList("l_todo", "Todo", 1)]
+    b = board(card("gate", [], None), card("paid", [], at(12, 10), done=True), lists=one)
+    assert is_done(b.cards[0], b, "l_todo") is False  # being in the only column is not done
+    assert is_done(b.cards[1], b, "l_todo") is True
+
+
+def test_ticked_one_off_is_archived_after_its_day() -> None:
+    one = [TrelloList("l_todo", "Todo", 1)]
+    b = board(card("paid", [], at(12, 10), done=True, touched=at(12, 10)), lists=one)
+    assert plan_rollover(b, at(12, 23), SETTINGS, "l_todo") == []  # still today's record
+    (u,) = plan_rollover(b, at(13, 4), SETTINGS, "l_todo")
+    assert u.archive is True and u.card_id == "paid"
+    # On a board with a Done column, one-offs move there and are left alone.
+    b2 = board(card("paid", [], at(12, 10), done=True, touched=at(12, 10)))
+    assert plan_rollover(b2, at(13, 4), SETTINGS, "l_done") == []
