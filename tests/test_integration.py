@@ -15,8 +15,11 @@ from homeassistant.setup import async_setup_component
 
 from custom_components.trello_todo.const import (
     CONF_BOARDS,
+    CONF_CARRY_OVER,
     CONF_DEFAULT_LISTS,
     CONF_DONE_LISTS,
+    CONF_ROLLOVER,
+    CONF_ROUTINE_DEFAULT_TIME,
     CONF_USE_WEBHOOK,
     CONF_WEBHOOK_ID,
     DOMAIN,
@@ -59,6 +62,11 @@ async def test_config_flow(hass: HomeAssistant, trello) -> None:
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_DONE_LISTS: "l_done", CONF_DEFAULT_LISTS: "l_todo"}
     )
+    assert result["step_id"] == "routines"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_ROLLOVER: "04:00:00", CONF_ROUTINE_DEFAULT_TIME: "18:00:00", CONF_CARRY_OVER: True},
+    )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Trello (Morgan Example)"
     assert result["options"] == {
@@ -66,6 +74,9 @@ async def test_config_flow(hass: HomeAssistant, trello) -> None:
         CONF_USE_WEBHOOK: False,
         CONF_DONE_LISTS: {BOARD_ID: "l_done"},
         CONF_DEFAULT_LISTS: {BOARD_ID: "l_todo"},
+        CONF_ROLLOVER: "04:00:00",
+        CONF_ROUTINE_DEFAULT_TIME: "18:00:00",
+        CONF_CARRY_OVER: True,
     }
 
 
@@ -95,7 +106,7 @@ async def test_entities_and_state(hass: HomeAssistant, trello, entry) -> None:
     assert board["default"] == "l_todo"
     assert [c["id"] for c in board["cards"]] == ["c1", "c2", "c3"]
     assert board["cards"][0]["members"] == ["m_morgan"]
-    assert board["members"][1]["name"] == "Sam Barker"
+    assert board["members"][1]["name"] == "Casey Example"
 
     items = await hass.services.async_call(
         "todo", "get_items", {}, target={"entity_id": ENTITY}, blocking=True, return_response=True
@@ -170,11 +181,11 @@ async def test_card_services(hass: HomeAssistant, trello, entry) -> None:
     assert call[1].query["idList"] == "l_doing"
 
     await hass.services.async_call(
-        DOMAIN, "set_members", {"card_id": "c1", "members": ["Sam"]},
+        DOMAIN, "set_members", {"card_id": "c1", "members": ["Casey"]},
         target={"entity_id": ENTITY}, blocking=True,
     )
     (add,) = _calls(trello, "POST", "/cards/c1/idMembers")
-    assert add[1].query["value"] == "m_wife"
+    assert add[1].query["value"] == "m_casey"
     assert len(_calls(trello, "DELETE", "/cards/c1/idMembers/m_morgan")) == 1
 
     await hass.services.async_call(
@@ -229,3 +240,53 @@ async def test_auth_failure_starts_reauth(hass: HomeAssistant, aioclient_mock, e
     assert entry.state is ConfigEntryState.SETUP_ERROR
     flows = hass.config_entries.flow.async_progress()
     assert flows and flows[0]["context"]["source"] == "reauth"
+
+
+async def test_routine_tick_and_rollover(hass: HomeAssistant, trello, entry, board, freezer) -> None:
+    """A day-labelled card ticks via dueComplete and is rolled over by the clock."""
+    await hass.config.async_set_time_zone("Europe/London")
+    freezer.move_to("2026-10-12T10:00:00+01:00")  # Monday
+    board["labels"].append({"id": "lb_daily", "name": "Daily", "color": "green"})
+    board["cards"].append({
+        "id": "r1", "name": "Feed the cat", "desc": "", "due": "2026-10-12T18:00:00.000Z",
+        "dueComplete": False, "idList": "l_todo", "idMembers": [], "idLabels": ["lb_daily"],
+        "pos": 50, "shortUrl": "https://trello.com/c/r1",
+    })
+    trello.put(f"{API}/cards/r1", json={})
+    await _setup(hass, entry)
+
+    state = hass.states.get(ENTITY)
+    routine = next(c for c in state.attributes["board"]["cards"] if c["id"] == "r1")
+    assert routine["routine"] == [0, 1, 2, 3, 4, 5, 6] and routine["done"] is False
+    assert hass.states.get("sensor.chores_due_today").state == "1"
+    assert not _calls(trello, "PUT", "/cards/r1")  # nothing to roll over yet
+
+    await hass.services.async_call(
+        "todo", "update_item", {"item": "Feed the cat", "status": "completed"},
+        target={"entity_id": ENTITY}, blocking=True,
+    )
+    (call,) = _calls(trello, "PUT", "/cards/r1")
+    assert call[1].query["dueComplete"] == "true"
+    assert "idList" not in call[1].query  # it did not move column
+
+    # Trello now reports it ticked; it reads as completed and stays put overnight.
+    board["cards"][-1]["dueComplete"] = True
+    freezer.move_to("2026-10-13T03:00:00+01:00")
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert len(_calls(trello, "PUT", "/cards/r1")) == 1
+    items = await hass.services.async_call(
+        "todo", "get_items", {}, target={"entity_id": ENTITY}, blocking=True, return_response=True
+    )
+    assert next(i for i in items[ENTITY]["items"] if i["uid"] == "r1")["status"] == "completed"
+
+    # After the 04:00 rollover it moves on to Tuesday and is unticked.
+    freezer.move_to("2026-10-13T04:00:30+01:00")
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    (_, call) = _calls(trello, "PUT", "/cards/r1")
+    assert call[1].query["due"].startswith("2026-10-13T19:00:00+01:00")
+    assert call[1].query["dueComplete"] == "false"
+    state = hass.states.get(ENTITY)
+    routine = next(c for c in state.attributes["board"]["cards"] if c["id"] == "r1")
+    assert routine["done"] is False and routine["due"].startswith("2026-10-13")

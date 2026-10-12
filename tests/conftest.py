@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMockResponse
 
 from custom_components.trello_todo.const import (
     CONF_API_KEY,
@@ -49,7 +50,7 @@ BOARD: dict[str, Any] = {
     ],
     "members": [
         {"id": "m_morgan", "fullName": "Morgan Example", "initials": "ME", "username": "morgan", "avatarUrl": None},
-        {"id": "m_wife", "fullName": "Sam Barker", "initials": "SB", "username": "sam", "avatarUrl": None},
+        {"id": "m_casey", "fullName": "Casey Example", "initials": "CE", "username": "casey", "avatarUrl": None},
     ],
     "labels": [{"id": "lb1", "name": "Garden", "color": "green"}],
 }
@@ -73,7 +74,11 @@ def trello(aioclient_mock, board):
     aioclient_mock.get(f"{API}/members/me", json={"id": "me1", "fullName": "Morgan Example", "username": "morgan"})
     aioclient_mock.get(f"{API}/members/me/boards", json=[{"id": BOARD_ID, "name": "Chores", "url": board["url"]}])
     aioclient_mock.get(f"{API}/boards/{BOARD_ID}/lists", json=board["lists"])
-    aioclient_mock.get(f"{API}/boards/{BOARD_ID}", json=board)
+    # Served live, so a test can change `board` between fetches.
+    async def serve_board(method, url, data):
+        return AiohttpClientMockResponse(method, url, json=board)
+
+    aioclient_mock.get(f"{API}/boards/{BOARD_ID}", side_effect=serve_board)
     aioclient_mock.get(f"{API}/tokens/tok/webhooks", json=[])
     return aioclient_mock
 

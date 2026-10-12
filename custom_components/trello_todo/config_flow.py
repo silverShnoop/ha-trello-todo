@@ -24,6 +24,7 @@ from homeassistant.helpers.selector import (
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
+    TimeSelector,
 )
 
 from .api import TrelloAuthError, TrelloClient, TrelloConnectionError, TrelloError, TrelloList
@@ -31,8 +32,11 @@ from .const import (
     AUTHORIZE_URL,
     CONF_API_KEY,
     CONF_BOARDS,
+    CONF_CARRY_OVER,
     CONF_DEFAULT_LISTS,
     CONF_DONE_LISTS,
+    CONF_ROLLOVER,
+    CONF_ROUTINE_DEFAULT_TIME,
     CONF_TOKEN,
     CONF_USE_WEBHOOK,
     DOMAIN,
@@ -112,7 +116,7 @@ class _BoardSteps:
             self._choices[CONF_DONE_LISTS][board_id] = user_input[CONF_DONE_LISTS]
             self._choices[CONF_DEFAULT_LISTS][board_id] = user_input[CONF_DEFAULT_LISTS]
         if not self._queue:
-            return await self._async_finish(self._choices)
+            return await self.async_step_routines()
 
         board_id = self._queue[0]
         try:
@@ -142,6 +146,32 @@ class _BoardSteps:
                 }
             ),
             description_placeholders={"board": self._boards.get(board_id, board_id)},
+        )
+
+    async def async_step_routines(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """How recurring cards (day labels) roll over."""
+        if user_input is not None:
+            self._choices[CONF_ROLLOVER] = user_input[CONF_ROLLOVER]
+            self._choices[CONF_ROUTINE_DEFAULT_TIME] = user_input[CONF_ROUTINE_DEFAULT_TIME]
+            self._choices[CONF_CARRY_OVER] = user_input[CONF_CARRY_OVER]
+            return await self._async_finish(self._choices)
+        d = self._defaults
+        return self.async_show_form(  # type: ignore[attr-defined]
+            step_id="routines",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_ROLLOVER, default=d.get(CONF_ROLLOVER, "04:00:00")
+                    ): TimeSelector(),
+                    vol.Required(
+                        CONF_ROUTINE_DEFAULT_TIME,
+                        default=d.get(CONF_ROUTINE_DEFAULT_TIME, "18:00:00"),
+                    ): TimeSelector(),
+                    vol.Required(
+                        CONF_CARRY_OVER, default=d.get(CONF_CARRY_OVER, True)
+                    ): BooleanSelector(),
+                }
+            ),
         )
 
     async def _async_finish(self, options: dict[str, Any]) -> ConfigFlowResult:

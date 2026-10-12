@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import logging
 
 from aiohttp import web
@@ -12,6 +13,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.network import NoURLAvailableError
 
 from .api import TrelloClient, TrelloError
@@ -62,6 +64,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: TrelloConfigEntry) -> bo
             await _async_sync_trello_webhooks(client, [], "")
         except TrelloError as err:
             _LOGGER.debug("Could not remove Trello webhooks: %s", err)
+
+    # Poll at the rollover time so a ticked routine moves on promptly, rather
+    # than whenever the next poll or webhook happens to land.
+    rollover = coordinator.routine_settings.rollover
+
+    async def _at_rollover(_now: datetime) -> None:
+        await coordinator.async_request_refresh()
+
+    entry.async_on_unload(
+        async_track_time_change(
+            hass, _at_rollover, hour=rollover.hour, minute=rollover.minute, second=5
+        )
+    )
 
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True

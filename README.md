@@ -43,6 +43,33 @@ body:
   detail: below
 ```
 
+## Routines: cards that repeat
+
+Give a card a **day label** and it becomes a routine. Labels are matched by
+name, case-insensitive: `Mon` … `Sun` (or the full names), `Daily`,
+`Weekdays`, `Weekend`. Several labels add up (`Mon` + `Thu`). The card's
+**due date is its deadline**: only the time of day matters, and the date
+always points at the next time it is wanted. Members are who it's for.
+
+A routine never leaves its column, so the board needs no extra lists:
+
+- **Ticking it** (dashboard, HA to-do view, voice, or the due-date tick in
+  the Trello app) marks the due date complete. Trello shows the green badge.
+- At the **rollover time** (default 04:00) HA advances the due date to the
+  next matching day at the same time, and clears the tick. Ticks made in the
+  evening therefore stay visible until the next morning.
+- A card with a day label but **no due date** gets one: its next matching
+  day at the default deadline time (default 18:00).
+- A **missed** routine stays overdue until someone ticks it (it then moves
+  on from today). Turn off *carry over* in the options and a missed routine
+  resets to its next day instead.
+
+Ordinary cards (no day label) still complete by moving to the Done column.
+`sensor.<board>_overdue_tasks` and `_due_today` count routines by their
+deadline, which is what a "needs attention" badge wants. In the `board`
+attribute each card carries `routine` (its weekday numbers, Mon = 0, or
+null) and `done`.
+
 ## Services
 
 All target a `todo.*` entity from this integration. Columns and people can
@@ -59,7 +86,7 @@ data: {card_id: 64f0…, members: [Morgan]}
 
 action: trello_todo.add_card
 target: {entity_id: todo.chores}
-data: {name: Paint the fence, list: Doing, members: [Morgan, Sam], due: "2026-10-04"}
+data: {name: Paint the fence, list: Doing, members: [Morgan, Casey], due: "2026-10-04"}
 ```
 
 `card_id` is the to-do item's `uid`.

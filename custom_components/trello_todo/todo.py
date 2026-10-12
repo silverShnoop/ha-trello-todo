@@ -34,6 +34,7 @@ from .const import (
     SERVICE_SET_MEMBERS,
 )
 from .coordinator import TrelloCoordinator
+from .routines import routine_days
 
 POS_STEP = 65536.0
 
@@ -160,10 +161,9 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
     def _sorted_cards(self) -> list[TrelloCard]:
         board = self.board
         order = {lst.id: i for i, lst in enumerate(board.lists)}
-        done = self.coordinator.done_list_id(board)
         return sorted(
             (c for c in board.cards if c.list_id in order),
-            key=lambda c: (c.list_id == done, order[c.list_id], c.pos),
+            key=lambda c: (self.coordinator.is_done(c, board), order[c.list_id], c.pos),
         )
 
     def _new_pos_after(self, list_id: str, previous: TrelloCard | None, exclude: str) -> float | str:
@@ -195,13 +195,16 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
             self._attr_todo_items = []
             return
         board = self.board
-        done = self.coordinator.done_list_id(board)
         tz = dt_util.get_default_time_zone()
         self._attr_todo_items = [
             TodoItem(
                 uid=c.id,
                 summary=c.name,
-                status=TodoItemStatus.COMPLETED if c.list_id == done else TodoItemStatus.NEEDS_ACTION,
+                status=(
+                    TodoItemStatus.COMPLETED
+                    if self.coordinator.is_done(c, board)
+                    else TodoItemStatus.NEEDS_ACTION
+                ),
                 due=c.due.astimezone(tz) if c.due else None,
                 description=c.desc or None,
             )
@@ -255,6 +258,9 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
                     "members": c.member_ids,
                     "labels": c.label_ids,
                     "due": c.due.isoformat() if c.due else None,
+                    "done": self.coordinator.is_done(c, board),
+                    # Weekday numbers (Mon=0) for a recurring card, else None.
+                    "routine": sorted(days) if (days := routine_days(c, board)) else None,
                     "desc": c.desc,
                     "url": c.url,
                 }
@@ -296,10 +302,15 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
         if new_due != card.due:
             fields["due"] = new_due if new_due else "null"
 
-        if item.status == TodoItemStatus.COMPLETED and card.list_id != done and done:
+        wants_done = item.status == TodoItemStatus.COMPLETED
+        if self.coordinator.is_routine(card, board):
+            # A routine never leaves its column: the tick is the due date's.
+            if wants_done != card.due_complete:
+                fields["dueComplete"] = wants_done
+        elif wants_done and card.list_id != done and done:
             fields["idList"] = done
             fields["pos"] = "top"
-        elif item.status == TodoItemStatus.NEEDS_ACTION and card.list_id == done:
+        elif not wants_done and card.list_id == done:
             back = self.coordinator.default_list_id(board)
             if back:
                 fields["idList"] = back

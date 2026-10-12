@@ -16,7 +16,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .api import TrelloBoard
+from .api import TrelloCard
 from .coordinator import TrelloCoordinator
 
 
@@ -24,26 +24,22 @@ from .coordinator import TrelloCoordinator
 class TrelloSensorDescription(SensorEntityDescription):
     """Describes a board count sensor."""
 
-    value_fn: Callable[[TrelloBoard, str | None], int]
+    value_fn: Callable[[list[TrelloCard]], int]
 
 
-def _open(board: TrelloBoard, done: str | None) -> int:
-    return sum(1 for c in board.cards if c.list_id != done)
+def _open(open_cards: list[TrelloCard]) -> int:
+    return len(open_cards)
 
 
-def _overdue(board: TrelloBoard, done: str | None) -> int:
+def _overdue(open_cards: list[TrelloCard]) -> int:
     now = dt_util.utcnow()
-    return sum(1 for c in board.cards if c.list_id != done and c.due and c.due < now)
+    return sum(1 for c in open_cards if c.due and c.due < now)
 
 
-def _due_today(board: TrelloBoard, done: str | None) -> int:
+def _due_today(open_cards: list[TrelloCard]) -> int:
     today = dt_util.now().date()
     tz = dt_util.get_default_time_zone()
-    return sum(
-        1
-        for c in board.cards
-        if c.list_id != done and c.due and c.due.astimezone(tz).date() == today
-    )
+    return sum(1 for c in open_cards if c.due and c.due.astimezone(tz).date() == today)
 
 
 SENSORS: tuple[TrelloSensorDescription, ...] = (
@@ -107,4 +103,5 @@ class TrelloCountSensor(CoordinatorEntity[TrelloCoordinator], SensorEntity):
         board = self.coordinator.data.get(self._board_id)
         if board is None:
             return None
-        return self.entity_description.value_fn(board, self.coordinator.done_list_id(board))
+        open_cards = [c for c in board.cards if not self.coordinator.is_done(c, board)]
+        return self.entity_description.value_fn(open_cards)

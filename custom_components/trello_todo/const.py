@@ -15,6 +15,9 @@ CONF_DONE_LISTS: Final = "done_lists"
 CONF_DEFAULT_LISTS: Final = "default_lists"
 CONF_USE_WEBHOOK: Final = "use_webhook"
 CONF_WEBHOOK_ID: Final = "webhook_id"
+CONF_ROLLOVER: Final = "rollover"
+CONF_ROUTINE_DEFAULT_TIME: Final = "routine_default_time"
+CONF_CARRY_OVER: Final = "carry_over"
 
 # Refresh cadence. With a working Trello webhook we still poll occasionally as a
 # safety net in case a delivery is missed.
