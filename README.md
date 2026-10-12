@@ -60,9 +60,10 @@ A routine never leaves its column, so the board needs no extra lists:
   evening therefore stay visible until the next morning.
 - A card with a day label but **no due date** gets one: its next matching
   day at the default deadline time (default 18:00).
-- A **missed** routine stays overdue until someone ticks it (it then moves
-  on from today). Turn off *carry over* in the options and a missed routine
-  resets to its next day instead.
+- A **missed** routine stays overdue until someone ticks it. The tick then
+  stays visible for the rest of that day (HA goes by the card's last
+  activity time), and at the next rollover it moves on. Turn off *carry
+  over* in the options and a missed routine resets to its next day instead.
 
 Ordinary cards (no day label) still complete by moving to the Done column.
 `sensor.<board>_overdue_tasks` and `_due_today` count routines by their

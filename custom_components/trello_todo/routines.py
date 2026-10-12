@@ -123,16 +123,17 @@ def plan_rollover(
         due = card.due.astimezone(tz)
         at = due.timetz().replace(tzinfo=None)
         if card.due_complete:
-            if due.date() < today - timedelta(days=1):
-                # Ticked days late (a carried-over card): that counts as
-                # done today, so it moves straight on to the day after.
-                earliest = today + timedelta(days=1)
-            else:
-                # Ticked on the day: the tick stays visible until the day
-                # boundary, then the card moves on.
-                if now < boundary_after(due, settings):
-                    continue
-                earliest = max(due.date() + timedelta(days=1), today)
+            # The tick stays visible until the day boundary after it was
+            # made, then the card moves on. Trello does not say when the
+            # tick happened, but the card's last activity is no earlier
+            # than it, so holding until the boundary after that is right
+            # for a tick on the day and for a late tick on a carried-over
+            # card alike. (Editing a ticked card merely delays its
+            # rollover to the next boundary, which costs nothing.)
+            since = max(due, card.last_activity.astimezone(tz)) if card.last_activity else due
+            if now < boundary_after(since, settings):
+                continue
+            earliest = max(due.date() + timedelta(days=1), today)
             nxt = next_occurrence(days, at, earliest, tz)
             if nxt <= now:
                 # It would land in the past, so the tick must have come after

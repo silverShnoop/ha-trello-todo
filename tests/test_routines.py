@@ -24,10 +24,13 @@ LABELS = [
 SETTINGS = RoutineSettings(rollover=time(4, 0), default_time=time(18, 0), carry_over=True)
 
 
-def card(cid: str, labels: list[str], due: datetime | None, done: bool = False) -> TrelloCard:
+def card(
+    cid: str, labels: list[str], due: datetime | None, done: bool = False,
+    touched: datetime | None = None,
+) -> TrelloCard:
     return TrelloCard(
         id=cid, name=cid, desc="", due=due, due_complete=done, list_id="l_todo",
-        member_ids=[], label_ids=labels, pos=1, url="",
+        member_ids=[], label_ids=labels, pos=1, url="", last_activity=touched,
     )
 
 
@@ -96,16 +99,35 @@ def test_missed_routine_resets_when_asked() -> None:
     assert u.due == at(13, 19) and u.clear_done is False
 
 
-def test_late_tick_counts_as_done_today() -> None:
-    b = board(card("cat", ["lb_daily"], at(12, 19), done=True))  # Monday's, ticked Wednesday
+def test_late_tick_stays_visible_for_the_day_it_was_made() -> None:
+    # Monday's card, carried over, ticked Wednesday 10:00.
+    b = board(card("cat", ["lb_daily"], at(12, 19), done=True, touched=at(14, 10)))
+    assert plan_rollover(b, at(14, 12), SETTINGS) == []  # still ticked on Wednesday
+    assert plan_rollover(b, at(15, 3), SETTINGS) == []
+    (u,) = plan_rollover(b, at(15, 4), SETTINGS)
+    assert u.due == at(15, 19) and u.clear_done is True  # Thursday's, after the boundary
+
+
+def test_late_tick_with_no_activity_time_moves_on_at_once() -> None:
+    # Without a last-activity time (older API data) there is nothing to hold on.
+    b = board(card("cat", ["lb_daily"], at(12, 19), done=True))
     (u,) = plan_rollover(b, at(14, 10), SETTINGS)
-    assert u.due == at(15, 19) and u.clear_done is True  # on to Thursday, not today again
+    assert u.due == at(14, 19)
 
 
 def test_tick_a_day_late_after_the_deadline_skips_today() -> None:
-    b = board(card("cat", ["lb_daily"], at(12, 19), done=True))  # Monday's, ticked Tuesday 20:00
-    (u,) = plan_rollover(b, at(13, 20), SETTINGS)
-    assert u.due == at(14, 19)  # Tuesday 19:00 is already past, so Wednesday
+    # Monday's card ticked Tuesday 20:00: Tuesday 19:00 is already past.
+    b = board(card("cat", ["lb_daily"], at(12, 19), done=True, touched=at(13, 20)))
+    assert plan_rollover(b, at(13, 21), SETTINGS) == []
+    (u,) = plan_rollover(b, at(14, 4), SETTINGS)
+    assert u.due == at(14, 19)
+
+
+def test_editing_a_ticked_card_does_not_untick_it_early() -> None:
+    b = board(card("cat", ["lb_daily"], at(12, 19), done=True, touched=at(12, 19, 30)))
+    assert plan_rollover(b, at(12, 23), SETTINGS) == []
+    (u,) = plan_rollover(b, at(13, 4), SETTINGS)
+    assert u.due == at(13, 19)
 
 
 def test_relabelled_card_moves_to_a_matching_day() -> None:

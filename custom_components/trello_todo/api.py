@@ -16,7 +16,7 @@ _LOGGER = logging.getLogger(__name__)
 API_BASE = "https://api.trello.com/1"
 TIMEOUT = aiohttp.ClientTimeout(total=20)
 
-CARD_FIELDS = "name,desc,due,dueComplete,idList,idMembers,idLabels,pos,shortUrl"
+CARD_FIELDS = "name,desc,due,dueComplete,idList,idMembers,idLabels,pos,shortUrl,dateLastActivity"
 LIST_FIELDS = "name,pos"
 MEMBER_FIELDS = "fullName,initials,username,avatarUrl"
 LABEL_FIELDS = "name,color"
@@ -77,6 +77,8 @@ class TrelloCard:
     label_ids: list[str]
     pos: float
     url: str
+    last_activity: datetime | None = None
+    """When the card last changed. A tick is a change, so this bounds the tick time."""
 
 
 @dataclass(slots=True)
@@ -131,6 +133,7 @@ def parse_board(raw: dict[str, Any]) -> TrelloBoard:
                 label_ids=list(c.get("idLabels") or []),
                 pos=float(c.get("pos", 0)),
                 url=c.get("shortUrl", ""),
+                last_activity=_parse_due(c.get("dateLastActivity")),
             )
             for c in raw.get("cards", [])
         ],
