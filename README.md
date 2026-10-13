@@ -65,17 +65,11 @@ A routine never leaves its column, so the board needs no extra lists:
   activity time), and at the next rollover it moves on. Turn off *carry
   over* in the options and a missed routine resets to its next day instead.
 
-**Saying the schedule.** A task added from Home Assistant — typed, or by
-voice through a dashboard mic — can carry its schedule in the description:
-*every day, deadline 7 PM*; *Mondays and Thursdays by 8pm*; *weekdays at
-07:30*; *at the weekend by midday*. The integration turns that into the
-day labels (adding any the board lacks) and a due date at the next matching
-day (never one already past, so a routine is not born overdue), and keeps
-whatever else the description said. The same words in the **name** work
-too — *clean the house every day by 7pm* — which is how a voice
-assistant's add-to-list intent hands things over. A bare hour with no
-am/pm up to 6 reads as evening (*by 7* is 19:00); give minutes or am/pm to
-say otherwise.
+**Adding a routine from Home Assistant** is `trello_todo.add_card` with
+`days` and `time`: the days become the labels (added to the board if it
+lacks them) and the due date lands on the next matching day still ahead,
+so a routine is never born overdue. A dashboard mic that turns speech
+into structured items can call this directly.
 
 Ordinary cards (no day label) still complete by moving to the Done column.
 On a board with **one column** there is nowhere to move to, so they tick in
@@ -105,6 +99,10 @@ data: {card_id: 64f0…, members: [Morgan]}
 action: trello_todo.add_card
 target: {entity_id: todo.chores}
 data: {name: Paint the fence, list: Doing, members: [Morgan, Casey], due: "2026-10-04"}
+
+action: trello_todo.add_card           # a routine: days become labels
+target: {entity_id: todo.chores}
+data: {name: Bins out, days: [mon], time: "19:00", members: [Casey]}
 ```
 
 `card_id` is the to-do item's `uid`.

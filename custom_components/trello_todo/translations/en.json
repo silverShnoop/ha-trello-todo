@@ -154,6 +154,14 @@
         "description": {
           "name": "Description",
           "description": "Card description."
+        },
+        "days": {
+          "name": "Days",
+          "description": "Weekdays the card repeats on: mon … sun, or daily, weekdays, weekend. Makes the card a routine."
+        },
+        "time": {
+          "name": "Time",
+          "description": "Deadline, HH:MM. With days: on each of those days. Alone: today, or tomorrow if it has gone."
         }
       }
     }

@@ -292,8 +292,8 @@ async def test_routine_tick_and_rollover(hass: HomeAssistant, trello, entry, boa
     assert routine["done"] is False and routine["due"].startswith("2026-10-13")
 
 
-async def test_spoken_schedule_becomes_labels_and_a_due_date(hass: HomeAssistant, trello, entry, board, freezer) -> None:
-    """'every day, deadline 7 PM' in the description labels the card and dates it."""
+async def test_add_card_with_days_and_time_makes_a_routine(hass: HomeAssistant, trello, entry, board, freezer) -> None:
+    """add_card with days labels the card and dates it at the next matching time."""
     await hass.config.async_set_time_zone("Europe/London")
     freezer.move_to("2026-10-13T09:50:00+01:00")  # Tuesday morning
     trello.post(f"{API}/labels", json={"id": "lb_new", "name": "Monday", "color": "green"})
@@ -301,38 +301,30 @@ async def test_spoken_schedule_becomes_labels_and_a_due_date(hass: HomeAssistant
     await _setup(hass, entry)
 
     await hass.services.async_call(
-        "todo", "add_item",
-        {"item": "Clean the house", "description": "every day, deadline 7 PM"},
+        DOMAIN, "add_card",
+        {"name": "Clean the house", "days": ["daily"], "time": "19:00", "members": ["Casey"]},
         target={"entity_id": ENTITY}, blocking=True,
     )
-    labels = _calls(trello, "POST", "/labels")
-    assert len(labels) == 7  # the fixture board had none of the day labels
-    assert {c[1].query["name"] for c in labels} == {
-        "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
-    }
+    assert len(_calls(trello, "POST", "/labels")) == 7  # the fixture board had no day labels
     (card,) = _calls(trello, "POST", "/cards")
     q = card[1].query
     assert q["name"] == "Clean the house"
-    assert "desc" not in q  # the schedule words were the whole description
     assert q["due"].startswith("2026-10-13T19:00:00+01:00")  # today, 19:00
     assert len(q["idLabels"].split(",")) == 7
+    assert q["idMembers"] == "m_casey"
 
-    # A voice assistant's add-to-list intent puts everything in the name.
     await hass.services.async_call(
-        "todo", "add_item", {"item": "feed the cat weekdays at 7am"},
+        DOMAIN, "add_card", {"name": "Feed the cat", "days": ["mon", "Wednesday"], "time": "07:00"},
         target={"entity_id": ENTITY}, blocking=True,
     )
     (_, card) = _calls(trello, "POST", "/cards")
-    q = card[1].query
-    assert q["name"] == "Feed the cat"
-    assert q["due"].startswith("2026-10-14T07:00:00+01:00")  # 07:00 today has gone
-    assert len(q["idLabels"].split(",")) == 5
+    assert card[1].query["due"].startswith("2026-10-14T07:00:00+01:00")  # Wednesday, not Tuesday
 
-    # A one-off with a note keeps its note and gets no labels or date.
+    # A one-off with just a time: today, or tomorrow once it has gone.
     await hass.services.async_call(
-        "todo", "add_item", {"item": "Fix the gate", "description": "hinge is loose"},
+        DOMAIN, "add_card", {"name": "Ring the plumber", "time": "09:00"},
         target={"entity_id": ENTITY}, blocking=True,
     )
     (_, _, card) = _calls(trello, "POST", "/cards")
-    assert card[1].query["desc"] == "hinge is loose"
-    assert "idLabels" not in card[1].query and "due" not in card[1].query
+    assert card[1].query["due"].startswith("2026-10-14T09:00:00+01:00")
+    assert "idLabels" not in card[1].query

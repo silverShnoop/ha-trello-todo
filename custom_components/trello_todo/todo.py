@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 import voluptuous as vol
@@ -34,8 +34,7 @@ from .const import (
     SERVICE_SET_MEMBERS,
 )
 from .coordinator import TrelloCoordinator
-from .routines import first_occurrence, routine_days
-from .schedule import parse_schedule
+from .routines import DAY_LABELS, first_occurrence, routine_days
 
 POS_STEP = 65536.0
 
@@ -80,9 +79,32 @@ async def async_setup_entry(
             vol.Optional(ATTR_MEMBERS): vol.All(cv.ensure_list, [cv.string]),
             vol.Optional(ATTR_DUE): vol.Any(cv.datetime, cv.date),
             vol.Optional(ATTR_DESCRIPTION): cv.string,
+            vol.Optional("days"): vol.All(cv.ensure_list, [cv.string]),
+            vol.Optional("time"): cv.string,
         },
         "async_add_card",
     )
+
+
+def _weekdays(words: list[str]) -> frozenset[int]:
+    """Weekday numbers from names: mon, Tuesday, daily, weekdays, weekend."""
+    found: set[int] = set()
+    for word in words:
+        key = str(word).strip().lower()
+        if key in DAY_LABELS:
+            found |= DAY_LABELS[key]
+        elif key.isdigit() and 0 <= int(key) <= 6:
+            found.add(int(key))
+        else:
+            raise ServiceValidationError(f"Unknown day '{word}'")
+    return frozenset(found)
+
+
+def _parse_hhmm(value: str) -> time:
+    parsed = dt_util.parse_time(str(value).strip())
+    if parsed is None:
+        raise ServiceValidationError(f"Not a time: '{value}' (use HH:MM)")
+    return parsed
 
 
 def _due_from_ha(due: date | datetime | None) -> datetime | None:
@@ -278,44 +300,18 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
     # ---- standard to-do operations --------------------------------------
 
     async def async_create_todo_item(self, item: TodoItem) -> None:
-        """Add a card to the default list.
-
-        A schedule said in the description -- "every day, deadline 7 PM",
-        "Mondays and Thursdays by 8pm" -- becomes the card's day labels and
-        its due date at the next matching day, rather than staying as words
-        nobody acts on. What is left of the description is kept.
-        """
-        board = self.board
-        list_id = self.coordinator.default_list_id(board)
+        """Add a card to the default list."""
+        list_id = self.coordinator.default_list_id(self.board)
         if list_id is None:
-            raise HomeAssistantError(f"{board.name} has no lists to add to")
+            raise HomeAssistantError(f"{self.board.name} has no lists to add to")
         if item.status == TodoItemStatus.COMPLETED:
-            list_id = self.coordinator.done_list_id(board) or list_id
-
-        name = item.summary or ""
-        sched = parse_schedule(item.description)
-        desc = sched.rest if (sched.days or sched.at) else item.description
-        if not (sched.days or sched.at):
-            # Said in the name instead -- "clean the house every day by 7pm"
-            # is what a voice assistant's add-to-list intent hands over,
-            # since that intent has nowhere else to put it.
-            spoken = parse_schedule(name)
-            if (spoken.days or spoken.at) and spoken.rest:
-                sched = spoken
-                name = spoken.rest[0].upper() + spoken.rest[1:]
-        due = _due_from_ha(item.due)
-        label_ids: list[str] = []
-        settings = self.coordinator.routine_settings
-        if sched.days:
-            label_ids = await self._day_labels(sched.days)
-            due = first_occurrence(sched.days, sched.at or settings.default_time, dt_util.now(), settings)
-        elif sched.at and due is None:
-            now = dt_util.now()
-            due = datetime.combine(now.date(), sched.at, tzinfo=now.tzinfo)
-
+            list_id = self.coordinator.done_list_id(self.board) or list_id
         await self._call(
             self.coordinator.client.create_card(
-                list_id, name, desc=desc or None, due=due, label_ids=label_ids
+                list_id,
+                item.summary or "",
+                desc=item.description,
+                due=_due_from_ha(item.due),
             )
         )
 
@@ -437,16 +433,38 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
         members: list[str] | None = None,
         due: date | datetime | None = None,
         description: str | None = None,
+        days: list[str] | None = None,
+        time: str | None = None,  # noqa: A002
     ) -> None:
-        """Add a card to a specific column with assignees."""
+        """Add a card: a one-off, or with `days` a routine.
+
+        `days` are weekday names (mon … sun, or daily / weekdays / weekend)
+        and become the card's labels; `time` (HH:MM) is the deadline, and
+        the due date lands on the next matching day still ahead. Without
+        `days`, a `time` alone means today at that time, or tomorrow if it
+        has gone.
+        """
         list_id = (
             self._resolve_list(list).id if list else self.coordinator.default_list_id(self.board)
         )
         if list_id is None:
             raise HomeAssistantError(f"{self.board.name} has no lists to add to")
         member_ids = [self._resolve_member(m).id for m in members or []]
+        settings = self.coordinator.routine_settings
+        at = _parse_hhmm(time) if time else None
+        when = _due_from_ha(due)
+        label_ids: list[str] = []
+        wanted = _weekdays(days or [])
+        if wanted:
+            label_ids = await self._day_labels(wanted)
+            when = first_occurrence(wanted, at or settings.default_time, dt_util.now(), settings)
+        elif at and when is None:
+            now = dt_util.now()
+            when = datetime.combine(now.date(), at, tzinfo=now.tzinfo)
+            if when <= now:
+                when += timedelta(days=1)
         await self._call(
             self.coordinator.client.create_card(
-                list_id, name, desc=description, due=_due_from_ha(due), member_ids=member_ids
+                list_id, name, desc=description, due=when, member_ids=member_ids, label_ids=label_ids
             )
         )

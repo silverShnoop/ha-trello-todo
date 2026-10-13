@@ -52,3 +52,11 @@ add_card:
       selector:
         text:
           multiline: true
+    days:
+      example: '["mon", "thu"]'
+      selector:
+        object:
+    time:
+      example: "19:00"
+      selector:
+        time:
