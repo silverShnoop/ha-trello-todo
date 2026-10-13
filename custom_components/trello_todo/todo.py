@@ -34,7 +34,7 @@ from .const import (
     SERVICE_SET_MEMBERS,
 )
 from .coordinator import TrelloCoordinator
-from .routines import logical_date, next_occurrence, routine_days
+from .routines import first_occurrence, routine_days
 from .schedule import parse_schedule
 
 POS_STEP = 65536.0
@@ -292,23 +292,30 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
         if item.status == TodoItemStatus.COMPLETED:
             list_id = self.coordinator.done_list_id(board) or list_id
 
+        name = item.summary or ""
         sched = parse_schedule(item.description)
         desc = sched.rest if (sched.days or sched.at) else item.description
+        if not (sched.days or sched.at):
+            # Said in the name instead -- "clean the house every day by 7pm"
+            # is what a voice assistant's add-to-list intent hands over,
+            # since that intent has nowhere else to put it.
+            spoken = parse_schedule(name)
+            if (spoken.days or spoken.at) and spoken.rest:
+                sched = spoken
+                name = spoken.rest[0].upper() + spoken.rest[1:]
         due = _due_from_ha(item.due)
         label_ids: list[str] = []
         settings = self.coordinator.routine_settings
         if sched.days:
             label_ids = await self._day_labels(sched.days)
-            at = sched.at or settings.default_time
-            now = dt_util.now()
-            due = next_occurrence(sched.days, at, logical_date(now, settings), now.tzinfo)
+            due = first_occurrence(sched.days, sched.at or settings.default_time, dt_util.now(), settings)
         elif sched.at and due is None:
             now = dt_util.now()
             due = datetime.combine(now.date(), sched.at, tzinfo=now.tzinfo)
 
         await self._call(
             self.coordinator.client.create_card(
-                list_id, item.summary or "", desc=desc or None, due=due, label_ids=label_ids
+                list_id, name, desc=desc or None, due=due, label_ids=label_ids
             )
         )
 

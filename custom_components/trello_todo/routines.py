@@ -91,6 +91,19 @@ def next_occurrence(
     raise ValueError("no matching day")  # unreachable: days is non-empty
 
 
+def first_occurrence(
+    days: frozenset[int], at: time, now: datetime, settings: RoutineSettings
+) -> datetime:
+    """A brand-new routine's first deadline: the next matching time still
+    ahead of us. Today's, if today matches and the hour has not gone;
+    otherwise the next day it runs. A card born already overdue is a nag
+    for something nobody was asked to do."""
+    nxt = next_occurrence(days, at, logical_date(now, settings), now.tzinfo)
+    if nxt <= now:
+        nxt = next_occurrence(days, at, nxt.date() + timedelta(days=1), now.tzinfo)
+    return nxt
+
+
 @dataclass(frozen=True, slots=True)
 class RoutineUpdate:
     """What a rollover wants changed on a card."""
@@ -132,7 +145,7 @@ def plan_rollover(
         if card.due is None:
             # Newly labelled: give it its first deadline.
             updates.append(
-                RoutineUpdate(card.id, next_occurrence(days, settings.default_time, today, tz), False)
+                RoutineUpdate(card.id, first_occurrence(days, settings.default_time, now, settings), False)
             )
             continue
         due = card.due.astimezone(tz)

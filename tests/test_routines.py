@@ -71,6 +71,10 @@ def test_new_routine_gets_its_first_deadline() -> None:
     assert u.due == at(12, 18) and u.clear_done is False  # today, at the default time
 
     b = board(card("bins", ["lb_mon"], None))
+    (u,) = plan_rollover(b, at(12, 20), SETTINGS)  # Monday 20:00: today's 18:00 has gone
+    assert u.due == at(19, 18)  # so next Monday, not born overdue
+
+    b = board(card("bins", ["lb_mon"], None))
     (u,) = plan_rollover(b, at(13, 10), SETTINGS)  # Tuesday
     assert u.due == at(19, 18)  # next Monday
 

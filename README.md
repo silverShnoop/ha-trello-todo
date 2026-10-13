@@ -70,7 +70,10 @@ voice through a dashboard mic — can carry its schedule in the description:
 *every day, deadline 7 PM*; *Mondays and Thursdays by 8pm*; *weekdays at
 07:30*; *at the weekend by midday*. The integration turns that into the
 day labels (adding any the board lacks) and a due date at the next matching
-day, and keeps whatever else the description said. A bare hour with no
+day (never one already past, so a routine is not born overdue), and keeps
+whatever else the description said. The same words in the **name** work
+too — *clean the house every day by 7pm* — which is how a voice
+assistant's add-to-list intent hands things over. A bare hour with no
 am/pm up to 6 reads as evening (*by 7* is 19:00); give minutes or am/pm to
 say otherwise.
 

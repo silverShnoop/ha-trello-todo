@@ -317,11 +317,22 @@ async def test_spoken_schedule_becomes_labels_and_a_due_date(hass: HomeAssistant
     assert q["due"].startswith("2026-10-13T19:00:00+01:00")  # today, 19:00
     assert len(q["idLabels"].split(",")) == 7
 
+    # A voice assistant's add-to-list intent puts everything in the name.
+    await hass.services.async_call(
+        "todo", "add_item", {"item": "feed the cat weekdays at 7am"},
+        target={"entity_id": ENTITY}, blocking=True,
+    )
+    (_, card) = _calls(trello, "POST", "/cards")
+    q = card[1].query
+    assert q["name"] == "Feed the cat"
+    assert q["due"].startswith("2026-10-14T07:00:00+01:00")  # 07:00 today has gone
+    assert len(q["idLabels"].split(",")) == 5
+
     # A one-off with a note keeps its note and gets no labels or date.
     await hass.services.async_call(
         "todo", "add_item", {"item": "Fix the gate", "description": "hinge is loose"},
         target={"entity_id": ENTITY}, blocking=True,
     )
-    (_, card) = _calls(trello, "POST", "/cards")
+    (_, _, card) = _calls(trello, "POST", "/cards")
     assert card[1].query["desc"] == "hinge is loose"
     assert "idLabels" not in card[1].query and "due" not in card[1].query
