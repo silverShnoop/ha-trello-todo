@@ -34,9 +34,16 @@ from .const import (
     SERVICE_SET_MEMBERS,
 )
 from .coordinator import TrelloCoordinator
-from .routines import routine_days
+from .routines import logical_date, next_occurrence, routine_days
+from .schedule import parse_schedule
 
 POS_STEP = 65536.0
+
+DAY_NAMES = (
+    ("Monday", "Mon"), ("Tuesday", "Tue"), ("Wednesday", "Wed"), ("Thursday", "Thu"),
+    ("Friday", "Fri"), ("Saturday", "Sat"), ("Sunday", "Sun"),
+)
+DAY_COLOURS = ("green", "yellow", "orange", "red", "purple", "blue", "sky")
 
 
 async def async_setup_entry(
@@ -271,20 +278,69 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
     # ---- standard to-do operations --------------------------------------
 
     async def async_create_todo_item(self, item: TodoItem) -> None:
-        """Add a card to the default list."""
-        list_id = self.coordinator.default_list_id(self.board)
+        """Add a card to the default list.
+
+        A schedule said in the description -- "every day, deadline 7 PM",
+        "Mondays and Thursdays by 8pm" -- becomes the card's day labels and
+        its due date at the next matching day, rather than staying as words
+        nobody acts on. What is left of the description is kept.
+        """
+        board = self.board
+        list_id = self.coordinator.default_list_id(board)
         if list_id is None:
-            raise HomeAssistantError(f"{self.board.name} has no lists to add to")
+            raise HomeAssistantError(f"{board.name} has no lists to add to")
         if item.status == TodoItemStatus.COMPLETED:
-            list_id = self.coordinator.done_list_id(self.board) or list_id
+            list_id = self.coordinator.done_list_id(board) or list_id
+
+        sched = parse_schedule(item.description)
+        desc = sched.rest if (sched.days or sched.at) else item.description
+        due = _due_from_ha(item.due)
+        label_ids: list[str] = []
+        settings = self.coordinator.routine_settings
+        if sched.days:
+            label_ids = await self._day_labels(sched.days)
+            at = sched.at or settings.default_time
+            now = dt_util.now()
+            due = next_occurrence(sched.days, at, logical_date(now, settings), now.tzinfo)
+        elif sched.at and due is None:
+            now = dt_util.now()
+            due = datetime.combine(now.date(), sched.at, tzinfo=now.tzinfo)
+
         await self._call(
             self.coordinator.client.create_card(
-                list_id,
-                item.summary or "",
-                desc=item.description,
-                due=_due_from_ha(item.due),
+                list_id, item.summary or "", desc=desc or None, due=due, label_ids=label_ids
             )
         )
+
+    async def _day_labels(self, days: frozenset[int]) -> list[str]:
+        """The board's labels for these days, creating any it lacks.
+
+        Every day uses a Daily label if the board has one; otherwise the
+        seven day labels, which the board already has or is given.
+        """
+        board = self.board
+        by_name = {lb.name.strip().lower(): lb for lb in board.labels}
+        if days == frozenset(range(7)):
+            for word in ("daily", "every day", "everyday"):
+                if word in by_name:
+                    return [by_name[word].id]
+        if days == frozenset(range(5)) and "weekdays" in by_name:
+            return [by_name["weekdays"].id]
+        if days == frozenset({5, 6}) and "weekend" in by_name:
+            return [by_name["weekend"].id]
+        ids: list[str] = []
+        for d in sorted(days):
+            full, short = DAY_NAMES[d]
+            label = by_name.get(full.lower()) or by_name.get(short.lower())
+            if label is None:
+                try:
+                    label = await self.coordinator.client.create_label(board.id, full, DAY_COLOURS[d])
+                except TrelloError as err:
+                    raise HomeAssistantError(f"Could not add a {full} label: {err}") from err
+                board.labels.append(label)
+                by_name[full.lower()] = label
+            ids.append(label.id)
+        return ids
 
     async def async_update_todo_item(self, item: TodoItem) -> None:
         """Rename / re-describe / re-date a card, and tick → move to Done."""

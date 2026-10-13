@@ -65,6 +65,15 @@ A routine never leaves its column, so the board needs no extra lists:
   activity time), and at the next rollover it moves on. Turn off *carry
   over* in the options and a missed routine resets to its next day instead.
 
+**Saying the schedule.** A task added from Home Assistant — typed, or by
+voice through a dashboard mic — can carry its schedule in the description:
+*every day, deadline 7 PM*; *Mondays and Thursdays by 8pm*; *weekdays at
+07:30*; *at the weekend by midday*. The integration turns that into the
+day labels (adding any the board lacks) and a due date at the next matching
+day, and keeps whatever else the description said. A bare hour with no
+am/pm up to 6 reads as evening (*by 7* is 19:00); give minutes or am/pm to
+say otherwise.
+
 Ordinary cards (no day label) still complete by moving to the Done column.
 On a board with **one column** there is nowhere to move to, so they tick in
 place too: the tick marks the due date complete (a card without one is

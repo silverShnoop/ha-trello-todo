@@ -245,6 +245,7 @@ class TrelloClient:
         desc: str | None = None,
         due: datetime | None = None,
         member_ids: list[str] | None = None,
+        label_ids: list[str] | None = None,
         pos: str | float = "bottom",
     ) -> dict[str, Any]:
         """Create a card."""
@@ -257,6 +258,7 @@ class TrelloClient:
                 "desc": desc,
                 "due": due.isoformat() if due else None,
                 "idMembers": member_ids or None,
+                "idLabels": label_ids or None,
                 "pos": pos,
             },
         )
@@ -272,6 +274,13 @@ class TrelloClient:
                 v = v.isoformat()
             params[k] = v
         return await self._request("PUT", f"/cards/{card_id}", params)
+
+    async def create_label(self, board_id: str, name: str, color: str | None) -> TrelloLabel:
+        """Add a label to a board."""
+        raw = await self._request(
+            "POST", "/labels", {"idBoard": board_id, "name": name, "color": color}
+        )
+        return TrelloLabel(id=raw["id"], name=raw.get("name", name), color=raw.get("color"))
 
     async def add_member(self, card_id: str, member_id: str) -> None:
         """Assign a member to a card."""

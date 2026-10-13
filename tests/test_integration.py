@@ -290,3 +290,38 @@ async def test_routine_tick_and_rollover(hass: HomeAssistant, trello, entry, boa
     state = hass.states.get(ENTITY)
     routine = next(c for c in state.attributes["board"]["cards"] if c["id"] == "r1")
     assert routine["done"] is False and routine["due"].startswith("2026-10-13")
+
+
+async def test_spoken_schedule_becomes_labels_and_a_due_date(hass: HomeAssistant, trello, entry, board, freezer) -> None:
+    """'every day, deadline 7 PM' in the description labels the card and dates it."""
+    await hass.config.async_set_time_zone("Europe/London")
+    freezer.move_to("2026-10-13T09:50:00+01:00")  # Tuesday morning
+    trello.post(f"{API}/labels", json={"id": "lb_new", "name": "Monday", "color": "green"})
+    trello.post(f"{API}/cards", json={"id": "new"})
+    await _setup(hass, entry)
+
+    await hass.services.async_call(
+        "todo", "add_item",
+        {"item": "Clean the house", "description": "every day, deadline 7 PM"},
+        target={"entity_id": ENTITY}, blocking=True,
+    )
+    labels = _calls(trello, "POST", "/labels")
+    assert len(labels) == 7  # the fixture board had none of the day labels
+    assert {c[1].query["name"] for c in labels} == {
+        "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
+    }
+    (card,) = _calls(trello, "POST", "/cards")
+    q = card[1].query
+    assert q["name"] == "Clean the house"
+    assert "desc" not in q  # the schedule words were the whole description
+    assert q["due"].startswith("2026-10-13T19:00:00+01:00")  # today, 19:00
+    assert len(q["idLabels"].split(",")) == 7
+
+    # A one-off with a note keeps its note and gets no labels or date.
+    await hass.services.async_call(
+        "todo", "add_item", {"item": "Fix the gate", "description": "hinge is loose"},
+        target={"entity_id": ENTITY}, blocking=True,
+    )
+    (_, card) = _calls(trello, "POST", "/cards")
+    assert card[1].query["desc"] == "hinge is loose"
+    assert "idLabels" not in card[1].query and "due" not in card[1].query
