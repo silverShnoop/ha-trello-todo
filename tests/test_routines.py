@@ -11,6 +11,8 @@ from custom_components.trello_todo.routines import (
     is_done,
     plan_rollover,
     routine_days,
+    start_for,
+    window_start,
 )
 
 TZ = ZoneInfo("Europe/London")
@@ -164,3 +166,32 @@ def test_ticked_one_off_is_archived_after_its_day() -> None:
     # On a board with a Done column, one-offs move there and are left alone.
     b2 = board(card("paid", [], at(12, 10), done=True, touched=at(12, 10)))
     assert plan_rollover(b2, at(13, 4), SETTINGS, "l_done") == []
+
+
+def test_rollover_carries_the_start_with_the_due_date() -> None:
+    # The dishwasher: asks from 20:00, due 22:30, ticked on Monday.
+    c = card("dishes", ["lb_daily"], at(12, 22, 30), done=True, touched=at(12, 21, 14))
+    c.start = at(12, 20)
+    (u,) = plan_rollover(board(c), at(13, 4), SETTINGS)
+    assert u.due == at(13, 22, 30)
+    assert u.start == at(13, 20)
+
+
+def test_rollover_leaves_a_card_without_a_start_alone() -> None:
+    (u,) = plan_rollover(board(card("cat", ["lb_daily"], at(12, 19), done=True)), at(13, 4), SETTINGS)
+    assert u.start is None
+
+
+def test_start_for_keeps_the_window_shape_and_ignores_nonsense() -> None:
+    assert start_for(at(12, 20), at(12, 22, 30), at(19, 22, 30)) == at(19, 20)
+    assert start_for(at(12, 23), at(12, 22, 30), at(13, 22, 30)) is None  # after the deadline
+    assert start_for(None, at(12, 22), at(13, 22)) is None
+    # No old deadline to measure from: keep the time of day, before the deadline.
+    assert start_for(at(1, 20), None, at(14, 22, 30)) == at(14, 20)
+    assert start_for(at(1, 23), None, at(14, 7)) == at(13, 23)
+
+
+def test_window_start_opens_before_the_deadline() -> None:
+    assert window_start(time(20, 0), at(14, 22, 30)) == at(14, 20)
+    assert window_start(time(23, 0), at(14, 1)) == at(13, 23)  # overnight window
+    assert window_start(None, at(14, 22)) is None

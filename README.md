@@ -82,6 +82,32 @@ deadline, which is what a "needs attention" badge wants. In the `board`
 attribute each card carries `routine` (its weekday numbers, Mon = 0, or
 null) and `done`.
 
+## When a chore starts asking
+
+A card's **start date** (Trello's own, beside the due date) is when it starts
+asking: the dishwasher from 20:00, due 22:30. Before the start it is not due
+yet; without one it asks from the start of the day it is due. The rollover
+moves the start with the due date, keeping the window's shape, and so does
+changing the due date from Home Assistant. `add_card` takes `start` as a time
+(`"20:00"`, the window opening that day) or a full date and time. The `board`
+attribute carries each card's `start`.
+
+## Chores that tick themselves
+
+**Configure → Chores that tick themselves** links a card to an entity and
+the state that means it is done: *Run the dishwasher* ← `sensor.dishwasher`
+is `running`. When the entity goes into that state the card is ticked,
+exactly as a person ticking it would, and the card's `ticked_by` in the
+`board` attribute says what and when (`{"by": "Dishwasher", "at": …}`).
+
+- Only a card that is asking counts: due today or carried over. One already
+  ticked, or not due until a later day, is left alone.
+- A run before the start time still counts: the job is done either way.
+- Found already in the state when Home Assistant starts, or when the link is
+  made, counts too.
+- Unticking by hand wins: the same run will not tick it again, through a
+  restart as well. Only the entity going into the state afresh does.
+
 ## Services
 
 All target a `todo.*` entity from this integration. Columns and people can
@@ -103,6 +129,10 @@ data: {name: Paint the fence, list: Doing, members: [Morgan, Casey], due: "2026-
 action: trello_todo.add_card           # a routine: days become labels
 target: {entity_id: todo.chores}
 data: {name: Bins out, days: [mon], time: "19:00", members: [Casey]}
+
+action: trello_todo.add_card           # asks from 20:00, due 22:30, every day
+target: {entity_id: todo.chores}
+data: {name: Run the dishwasher, days: [daily], start: "20:00", time: "22:30"}
 ```
 
 `card_id` is the to-do item's `uid`.

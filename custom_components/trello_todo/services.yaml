@@ -60,3 +60,7 @@ add_card:
       example: "19:00"
       selector:
         time:
+    start:
+      example: "20:00"
+      selector:
+        text:

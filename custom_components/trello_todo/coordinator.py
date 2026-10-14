@@ -16,6 +16,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from homeassistant.util import dt as dt_util
 
+from .autotick import AutoTick
 from .api import TrelloAuthError, TrelloBoard, TrelloCard, TrelloClient, TrelloError
 from .const import (
     CONF_BOARDS,
@@ -64,6 +65,12 @@ class TrelloCoordinator(DataUpdateCoordinator[dict[str, TrelloBoard]]):
         )
         self.client = client
         self.sync_mode = "polling"
+        self.autotick = AutoTick(hass, self)
+
+    @property
+    def ticked_by(self) -> dict[str, dict[str, str]]:
+        """Card id -> what ticked it and when, for cards a sensor ticked."""
+        return self.autotick.ticked_by
 
     @property
     def routine_settings(self) -> RoutineSettings:
@@ -166,6 +173,8 @@ class TrelloCoordinator(DataUpdateCoordinator[dict[str, TrelloBoard]]):
                 _LOGGER.debug("Archived finished card '%s'", card.name)
                 continue
             fields: dict[str, Any] = {"due": update.due}
+            if update.start is not None:
+                fields["start"] = update.start
             if update.clear_done:
                 fields["dueComplete"] = False
             try:
@@ -175,6 +184,8 @@ class TrelloCoordinator(DataUpdateCoordinator[dict[str, TrelloBoard]]):
                 continue
             # Reflect it locally rather than fetching the board again.
             card.due = update.due
+            if update.start is not None:
+                card.start = update.start
             if update.clear_done:
                 card.due_complete = False
             _LOGGER.debug("Routine '%s' now due %s", card.name, update.due.isoformat())

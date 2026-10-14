@@ -51,7 +51,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: TrelloConfigEntry) -> bo
         async_get_clientsession(hass), entry.data[CONF_API_KEY], entry.data[CONF_TOKEN]
     )
     coordinator = TrelloCoordinator(hass, entry, client)
+    await coordinator.autotick.async_start()
+    entry.async_on_unload(coordinator.autotick.async_stop)
     await coordinator.async_config_entry_first_refresh()
+    entry.async_on_unload(coordinator.async_add_listener(coordinator.autotick.prune))
+    coordinator.autotick.async_catch_up()
     entry.runtime_data = RuntimeData(coordinator=coordinator)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

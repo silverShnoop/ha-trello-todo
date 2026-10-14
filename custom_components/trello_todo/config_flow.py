@@ -17,6 +17,8 @@ from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     BooleanSelector,
+    EntitySelector,
+    EntitySelectorConfig,
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
@@ -27,10 +29,12 @@ from homeassistant.helpers.selector import (
     TimeSelector,
 )
 
+from .autotick import describe, links_from
 from .api import TrelloAuthError, TrelloClient, TrelloConnectionError, TrelloError, TrelloList
 from .const import (
     AUTHORIZE_URL,
     CONF_API_KEY,
+    CONF_AUTOTICK,
     CONF_BOARDS,
     CONF_CARRY_OVER,
     CONF_DEFAULT_LISTS,
@@ -259,7 +263,7 @@ class TrelloTodoConfigFlow(_BoardSteps, ConfigFlow, domain=DOMAIN):
 
 
 class TrelloTodoOptionsFlow(_BoardSteps, OptionsFlow):
-    """Change boards / Done column later."""
+    """Change boards / Done column later, and which chores tick themselves."""
 
     def __init__(self) -> None:
         """Initialise."""
@@ -269,6 +273,10 @@ class TrelloTodoOptionsFlow(_BoardSteps, OptionsFlow):
         self._defaults = {}
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Boards and routines, or the chores that tick themselves."""
+        return self.async_show_menu(step_id="init", menu_options=["settings", "autotick"])
+
+    async def async_step_settings(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Start at board selection with current values filled in."""
         self._defaults = dict(self.config_entry.options)
         self.client = TrelloClient(
@@ -282,5 +290,66 @@ class TrelloTodoOptionsFlow(_BoardSteps, OptionsFlow):
             return self.async_abort(reason="cannot_connect")
         return await self.async_step_boards()
 
+    async def async_step_autotick(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Link a chore to the state that proves it done; keep or drop the links there are."""
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        coordinator = getattr(runtime, "coordinator", None)
+        if coordinator is None or not coordinator.data:
+            return self.async_abort(reason="not_loaded")
+        cards: dict[str, str] = {}
+        for board in coordinator.data.values():
+            for card in sorted(board.cards, key=lambda c: c.name.lower()):
+                cards[f"{board.id}|{card.id}"] = (
+                    card.name if len(coordinator.data) == 1 else f"{board.name}: {card.name}"
+                )
+        links = links_from(self.config_entry.options)
+
+        def label(link: dict[str, Any]) -> str:
+            state = self.hass.states.get(link["entity"])
+            entity = state.name if state else link["entity"]
+            card = cards.get(f"{link['board']}|{link['card']}", "a card that is gone")
+            return describe(link, card, entity)
+
+        keys = [f"{link['board']}|{link['card']}|{link['entity']}" for link in links]
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            kept = [link for key, link in zip(keys, links) if key in user_input.get("keep", [])]
+            chosen = user_input.get("card")
+            entity = user_input.get("entity")
+            states = [x.strip() for x in str(user_input.get("states") or "").split(",") if x.strip()]
+            if chosen or entity:
+                if not (chosen and entity and states):
+                    errors["base"] = "incomplete_link"
+                elif chosen not in cards:
+                    errors["card"] = "unknown_card"
+                else:
+                    board_id, card_id = chosen.split("|", 1)
+                    kept = [k for k in kept if not (k["card"] == card_id and k["entity"] == entity)]
+                    kept.append({"board": board_id, "card": card_id, "entity": entity, "states": states})
+            if not errors:
+                return self.async_create_entry(
+                    data={**self.config_entry.options, CONF_AUTOTICK: kept}
+                )
+
+        schema: dict[Any, Any] = {}
+        if links:
+            schema[vol.Optional("keep", default=keys)] = SelectSelector(
+                SelectSelectorConfig(
+                    options=[SelectOptionDict(value=k, label=label(link)) for k, link in zip(keys, links)],
+                    multiple=True,
+                    mode=SelectSelectorMode.LIST,
+                )
+            )
+        schema[vol.Optional("card")] = SelectSelector(
+            SelectSelectorConfig(
+                options=[SelectOptionDict(value=k, label=v) for k, v in cards.items()],
+                mode=SelectSelectorMode.DROPDOWN,
+            )
+        )
+        schema[vol.Optional("entity")] = EntitySelector(EntitySelectorConfig())
+        schema[vol.Optional("states", default="on")] = TextSelector()
+        return self.async_show_form(step_id="autotick", data_schema=vol.Schema(schema), errors=errors)
+
     async def _async_finish(self, options: dict[str, Any]) -> ConfigFlowResult:
-        return self.async_create_entry(data=options)
+        # Keep what this path does not ask about, such as the auto-tick links.
+        return self.async_create_entry(data={**self.config_entry.options, **options})

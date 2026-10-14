@@ -80,13 +80,33 @@
           "routine_default_time": "Deadline for a routine card with no due date",
           "carry_over": "A missed routine stays overdue until ticked (off: it resets to its next day)"
         }
+      },
+      "init": {
+        "title": "Trello To-do",
+        "menu_options": {
+          "settings": "Boards, columns and routines",
+          "autotick": "Chores that tick themselves"
+        }
+      },
+      "autotick": {
+        "title": "Chores that tick themselves",
+        "description": "Link a chore to the state that proves it done, such as Run the dishwasher to the dishwasher being running. When the entity goes into that state, the card is ticked, if it is due today or carried over. Unticking it by hand wins until the entity goes into the state again.",
+        "data": {
+          "keep": "Links (untick one to remove it)",
+          "card": "Add: the chore",
+          "entity": "Add: the entity that shows it was done",
+          "states": "Add: the state that means done (comma between several)"
+        }
       }
     },
     "error": {
-      "no_boards": "Pick at least one board."
+      "no_boards": "Pick at least one board.",
+      "incomplete_link": "Pick the chore, the entity and the state.",
+      "unknown_card": "That card is not on a board here."
     },
     "abort": {
-      "cannot_connect": "Couldn't reach Trello."
+      "cannot_connect": "Couldn't reach Trello.",
+      "not_loaded": "Trello To-do has to be running to choose a card. Try again once it has loaded."
     }
   },
   "entity": {
@@ -162,6 +182,10 @@
         "time": {
           "name": "Time",
           "description": "Deadline, HH:MM. With days: on each of those days. Alone: today, or tomorrow if it has gone."
+        },
+        "start": {
+          "name": "Start",
+          "description": "When it starts asking. HH:MM opens the window that day, before the deadline (the dishwasher from 20:00 for a 22:30 deadline). A full date and time sets it outright. Without it, from the start of its day."
         }
       }
     }
