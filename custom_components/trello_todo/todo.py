@@ -34,7 +34,7 @@ from .const import (
     SERVICE_SET_MEMBERS,
 )
 from .coordinator import TrelloCoordinator
-from .routines import DAY_LABELS, first_occurrence, routine_days
+from .routines import DAY_LABELS, first_occurrence, routine_days, start_for, window_start
 
 POS_STEP = 65536.0
 
@@ -81,6 +81,7 @@ async def async_setup_entry(
             vol.Optional(ATTR_DESCRIPTION): cv.string,
             vol.Optional("days"): vol.All(cv.ensure_list, [cv.string]),
             vol.Optional("time"): cv.string,
+            vol.Optional("start"): cv.string,
         },
         "async_add_card",
     )
@@ -105,6 +106,27 @@ def _parse_hhmm(value: str) -> time:
     if parsed is None:
         raise ServiceValidationError(f"Not a time: '{value}' (use HH:MM)")
     return parsed
+
+
+def _start_from_ha(value: str | None, due: datetime | None) -> datetime | None:
+    """A card's start from what the service was given: a time of day, which
+    opens the window on the due day, or a full date and time."""
+    if not value or not str(value).strip():
+        return None
+    text = str(value).strip()
+    at = dt_util.parse_time(text)
+    if at is not None:
+        if due is None:
+            raise ServiceValidationError("A start time needs a deadline (time or due) to belong to")
+        return window_start(at, due)
+    moment = dt_util.parse_datetime(text)
+    if moment is None:
+        raise ServiceValidationError(f"Not a time or a date and time: {text}")
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=dt_util.get_default_time_zone())
+    if due is not None and moment > due:
+        raise ServiceValidationError("The start is after the deadline")
+    return moment
 
 
 def _due_from_ha(due: date | datetime | None) -> datetime | None:
@@ -287,7 +309,11 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
                     "members": c.member_ids,
                     "labels": c.label_ids,
                     "due": c.due.isoformat() if c.due else None,
+                    # When it starts asking; None means from the start of its day.
+                    "start": c.start.isoformat() if c.start else None,
                     "done": self.coordinator.is_done(c, board),
+                    # What ticked it, when a sensor did: {"by", "at"}.
+                    "ticked_by": self.coordinator.ticked_by.get(c.id),
                     # Weekday numbers (Mon=0) for a recurring card, else None.
                     "routine": sorted(days) if (days := routine_days(c, board)) else None,
                     "desc": c.desc,
@@ -360,6 +386,9 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
         new_due = _due_from_ha(item.due)
         if new_due != card.due:
             fields["due"] = new_due if new_due else "null"
+            # The window moves with its deadline: 20:00 to 22:30 stays that.
+            if new_due and (opens := start_for(card.start, card.due, new_due)):
+                fields["start"] = opens
 
         wants_done = item.status == TodoItemStatus.COMPLETED
         if self.coordinator.ticks_in_place(card, board):
@@ -380,6 +409,10 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
                 fields["idList"] = back
                 fields["pos"] = "bottom"
 
+        if not wants_done and self.coordinator.is_done(card, board):
+            # Unticked by hand: whatever ticked it no longer speaks for it,
+            # and the run that did will not tick it again.
+            self.coordinator.autotick.note_untick(card.id)
         if fields:
             await self._call(self.coordinator.client.update_card(card.id, **fields))
 
@@ -435,6 +468,7 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
         description: str | None = None,
         days: list[str] | None = None,
         time: str | None = None,  # noqa: A002
+        start: str | None = None,
     ) -> None:
         """Add a card: a one-off, or with `days` a routine.
 
@@ -442,7 +476,9 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
         and become the card's labels; `time` (HH:MM) is the deadline, and
         the due date lands on the next matching day still ahead. Without
         `days`, a `time` alone means today at that time, or tomorrow if it
-        has gone.
+        has gone. `start` is when it starts asking: a time (HH:MM) opens
+        the window that day, before the deadline; a full date and time sets
+        it outright. Without it the card asks from the start of its day.
         """
         list_id = (
             self._resolve_list(list).id if list else self.coordinator.default_list_id(self.board)
@@ -463,8 +499,10 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
             when = datetime.combine(now.date(), at, tzinfo=now.tzinfo)
             if when <= now:
                 when += timedelta(days=1)
+        opens = _start_from_ha(start, when)
         await self._call(
             self.coordinator.client.create_card(
-                list_id, name, desc=description, due=when, member_ids=member_ids, label_ids=label_ids
+                list_id, name, desc=description, due=when, start=opens,
+                member_ids=member_ids, label_ids=label_ids,
             )
         )

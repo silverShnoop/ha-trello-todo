@@ -113,6 +113,39 @@ class RoutineUpdate:
     clear_done: bool
     archive: bool = False
     """A ticked one-off whose day is over: it goes to Trello's archive."""
+    start: datetime | None = None
+    """The start date to set beside the new due date, when the card has one."""
+
+
+def start_for(start: datetime | None, old_due: datetime | None, new_due: datetime) -> datetime | None:
+    """Where a card's start goes when its due date moves to `new_due`.
+
+    The window keeps its shape: a card that starts asking at 20:00 for a
+    22:30 deadline starts at 20:00 on the new day too. Without an old due
+    date to measure from, the start keeps its time of day, on the due day,
+    or the day before when that time is after the deadline. A start after
+    the due date, or more than a week before it, is not a window anybody
+    meant, and is left where it is.
+    """
+    if start is None:
+        return None
+    tz = new_due.tzinfo
+    start = start.astimezone(tz)
+    if old_due is not None:
+        lead = old_due.astimezone(tz) - start
+        if timedelta(0) <= lead <= timedelta(days=7):
+            return new_due - lead
+        return None
+    candidate = datetime.combine(new_due.date(), start.timetz().replace(tzinfo=None), tzinfo=tz)
+    return candidate if candidate <= new_due else candidate - timedelta(days=1)
+
+
+def window_start(start_at: time | None, due: datetime) -> datetime | None:
+    """The start date for a new card whose window opens at `start_at`."""
+    if start_at is None:
+        return None
+    candidate = datetime.combine(due.date(), start_at, tzinfo=due.tzinfo)
+    return candidate if candidate <= due else candidate - timedelta(days=1)
 
 
 def plan_rollover(
@@ -144,8 +177,9 @@ def plan_rollover(
             continue
         if card.due is None:
             # Newly labelled: give it its first deadline.
+            due = first_occurrence(days, settings.default_time, now, settings)
             updates.append(
-                RoutineUpdate(card.id, first_occurrence(days, settings.default_time, now, settings), False)
+                RoutineUpdate(card.id, due, False, start=start_for(card.start, None, due))
             )
             continue
         due = card.due.astimezone(tz)
@@ -167,14 +201,16 @@ def plan_rollover(
                 # It would land in the past, so the tick must have come after
                 # that time: today's is done too.
                 nxt = next_occurrence(days, at, nxt.date() + timedelta(days=1), tz)
-            updates.append(RoutineUpdate(card.id, nxt, True))
+            updates.append(RoutineUpdate(card.id, nxt, True, start=start_for(card.start, due, nxt)))
         elif due.weekday() not in days and due.date() >= today:
             # Labels changed under it: the due date is on a day it no longer runs.
-            updates.append(RoutineUpdate(card.id, next_occurrence(days, at, today, tz), False))
+            nxt = next_occurrence(days, at, today, tz)
+            updates.append(RoutineUpdate(card.id, nxt, False, start=start_for(card.start, due, nxt)))
         elif not settings.carry_over and now >= boundary_after(due, settings):
             # Missed, and the house would rather it reset than nag.
             earliest = max(due.date() + timedelta(days=1), today)
-            updates.append(RoutineUpdate(card.id, next_occurrence(days, at, earliest, tz), False))
+            nxt = next_occurrence(days, at, earliest, tz)
+            updates.append(RoutineUpdate(card.id, nxt, False, start=start_for(card.start, due, nxt)))
     return updates
 
 

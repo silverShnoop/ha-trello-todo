@@ -16,7 +16,7 @@ _LOGGER = logging.getLogger(__name__)
 API_BASE = "https://api.trello.com/1"
 TIMEOUT = aiohttp.ClientTimeout(total=20)
 
-CARD_FIELDS = "name,desc,due,dueComplete,idList,idMembers,idLabels,pos,shortUrl,dateLastActivity"
+CARD_FIELDS = "name,desc,start,due,dueComplete,idList,idMembers,idLabels,pos,shortUrl,dateLastActivity"
 LIST_FIELDS = "name,pos"
 MEMBER_FIELDS = "fullName,initials,username,avatarUrl"
 LABEL_FIELDS = "name,color"
@@ -79,6 +79,9 @@ class TrelloCard:
     url: str
     last_activity: datetime | None = None
     """When the card last changed. A tick is a change, so this bounds the tick time."""
+    start: datetime | None = None
+    """Trello's start date: when the card starts asking. None means from the
+    start of the day it is due."""
 
 
 @dataclass(slots=True)
@@ -134,6 +137,7 @@ def parse_board(raw: dict[str, Any]) -> TrelloBoard:
                 pos=float(c.get("pos", 0)),
                 url=c.get("shortUrl", ""),
                 last_activity=_parse_due(c.get("dateLastActivity")),
+                start=_parse_due(c.get("start")),
             )
             for c in raw.get("cards", [])
         ],
@@ -244,6 +248,7 @@ class TrelloClient:
         *,
         desc: str | None = None,
         due: datetime | None = None,
+        start: datetime | None = None,
         member_ids: list[str] | None = None,
         label_ids: list[str] | None = None,
         pos: str | float = "bottom",
@@ -257,6 +262,7 @@ class TrelloClient:
                 "name": name,
                 "desc": desc,
                 "due": due.isoformat() if due else None,
+                "start": start.isoformat() if start else None,
                 "idMembers": member_ids or None,
                 "idLabels": label_ids or None,
                 "pos": pos,
@@ -266,7 +272,7 @@ class TrelloClient:
     async def update_card(self, card_id: str, **fields: Any) -> dict[str, Any]:
         """Update a card. Pass Trello field names (idList, name, desc, due, pos…).
 
-        Pass due="null" to remove the due date.
+        Pass due="null" (or start="null") to remove a date.
         """
         params = {}
         for k, v in fields.items():
