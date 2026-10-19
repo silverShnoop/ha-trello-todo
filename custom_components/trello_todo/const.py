@@ -19,6 +19,7 @@ CONF_ROLLOVER: Final = "rollover"
 CONF_ROUTINE_DEFAULT_TIME: Final = "routine_default_time"
 CONF_CARRY_OVER: Final = "carry_over"
 CONF_AUTOTICK: Final = "autotick"
+CONF_COLUMN_LISTS: Final = "column_lists"
 
 # Refresh cadence. With a working Trello webhook we still poll occasionally as a
 # safety net in case a delivery is missed.

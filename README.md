@@ -43,6 +43,28 @@ body:
   detail: below
 ```
 
+## A board of lists: one to-do per column
+
+A board can instead be a set of lists, one per column: Chores, Meal routine,
+Food notes. Tick **Each column is its own list** for it in the columns step
+(Configure → Boards, columns and routines), and each column becomes its own
+`todo.<board>_<column>`, named after the column and following it if it is
+renamed. A column added in Trello appears as a list at the next refresh.
+
+On such a board nothing completes by moving, because moving a card to
+another column puts it on another list. Every card **ticks in place**, the
+way it does on a one-column board: the tick marks the due date complete, it
+stays visible for the rest of that day, and at the rollover a one-off is
+archived. Routines, start dates, assignees and chores that tick themselves
+work as before, and so does `add_card`, which adds to the column it targets
+unless `list` names another. The Done and new-tasks columns are not used.
+
+The board keeps one device and one set of count sensors, covering every
+column. Switching a board between the two shapes removes the other shape's
+to-do entities rather than leaving them unavailable; give a column's entity
+the id an old list had (Settings → Entities) and dashboards pointing at it
+need no change.
+
 ## Routines: cards that repeat
 
 Give a card a **day label** and it becomes a routine. Labels are matched by

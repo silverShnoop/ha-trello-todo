@@ -153,10 +153,12 @@ def plan_rollover(
     now: datetime,
     settings: RoutineSettings,
     done_list_id: str | None = None,
+    columns: bool = False,
 ) -> list[RoutineUpdate]:
     """Cards whose due date should move on, and where to.
 
     Idempotent: run as often as you like, it only names cards that are stale.
+    `columns` is a board whose every column is a list of its own.
     """
     tz = now.tzinfo
     today = logical_date(now, settings)
@@ -168,7 +170,7 @@ def plan_rollover(
             # rest of the day it was ticked on -- the same rule as a
             # routine -- and then goes to the archive, where Trello keeps
             # it. The list reads as today's record and empties overnight.
-            if card.due_complete and ticks_in_place(card, board, done_list_id):
+            if card.due_complete and ticks_in_place(card, board, done_list_id, columns):
                 since = card.last_activity.astimezone(tz) if card.last_activity else (
                     card.due.astimezone(tz) if card.due else None
                 )
@@ -214,22 +216,29 @@ def plan_rollover(
     return updates
 
 
-def ticks_in_place(card: TrelloCard, board: TrelloBoard, done_list_id: str | None) -> bool:
+def ticks_in_place(
+    card: TrelloCard, board: TrelloBoard, done_list_id: str | None, columns: bool = False
+) -> bool:
     """Does finishing this card mean ticking it rather than moving it?
 
     Routines always tick in place. So does every card on a board with no
     separate Done column (one column, or Done and new-tasks the same):
     there is nowhere to move to, and "in the Done column" would make every
-    card done the moment it was added.
+    card done the moment it was added. And so does every card on a board
+    whose columns are lists of their own (`columns`): each column is a
+    one-column board as far as its cards are concerned, and moving a card
+    to another column would put it on another list, not finish it.
     """
-    if routine_days(card, board) is not None:
+    if columns or routine_days(card, board) is not None:
         return True
     return done_list_id is None or len(board.lists) < 2
 
 
-def is_done(card: TrelloCard, board: TrelloBoard, done_list_id: str | None) -> bool:
-    """Finished means: ticked, for a routine or on a one-column board; in
-    the Done column, for anything else."""
-    if ticks_in_place(card, board, done_list_id):
+def is_done(
+    card: TrelloCard, board: TrelloBoard, done_list_id: str | None, columns: bool = False
+) -> bool:
+    """Finished means: ticked, for a routine, on a one-column board or on a
+    board of column lists; in the Done column, for anything else."""
+    if ticks_in_place(card, board, done_list_id, columns):
         return card.due_complete
     return card.list_id == done_list_id
