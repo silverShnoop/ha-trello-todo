@@ -37,6 +37,7 @@ from .const import (
     CONF_AUTOTICK,
     CONF_BOARDS,
     CONF_CARRY_OVER,
+    CONF_COLUMN_LISTS,
     CONF_DEFAULT_LISTS,
     CONF_DONE_LISTS,
     CONF_ROLLOVER,
@@ -106,6 +107,7 @@ class _BoardSteps:
                     CONF_USE_WEBHOOK: user_input[CONF_USE_WEBHOOK],
                     CONF_DONE_LISTS: {},
                     CONF_DEFAULT_LISTS: {},
+                    CONF_COLUMN_LISTS: [],
                 }
                 self._queue = list(boards)
                 return await self.async_step_lists()
@@ -119,6 +121,8 @@ class _BoardSteps:
             board_id = self._queue.pop(0)
             self._choices[CONF_DONE_LISTS][board_id] = user_input[CONF_DONE_LISTS]
             self._choices[CONF_DEFAULT_LISTS][board_id] = user_input[CONF_DEFAULT_LISTS]
+            if user_input.get(CONF_COLUMN_LISTS):
+                self._choices[CONF_COLUMN_LISTS].append(board_id)
         if not self._queue:
             return await self.async_step_routines()
 
@@ -147,6 +151,10 @@ class _BoardSteps:
                 {
                     vol.Required(CONF_DONE_LISTS, default=done): dropdown,
                     vol.Required(CONF_DEFAULT_LISTS, default=default): dropdown,
+                    vol.Required(
+                        CONF_COLUMN_LISTS,
+                        default=board_id in self._defaults.get(CONF_COLUMN_LISTS, []),
+                    ): BooleanSelector(),
                 }
             ),
             description_placeholders={"board": self._boards.get(board_id, board_id)},

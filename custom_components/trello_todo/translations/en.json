@@ -25,10 +25,11 @@
       },
       "lists": {
         "title": "Columns on {board}",
-        "description": "Ticking a task in Home Assistant moves its card to the Done column. New tasks are added to the second column you pick.",
+        "description": "Ticking a task in Home Assistant moves its card to the Done column. New tasks are added to the second column you pick.\n\nOr make every column a to-do list of its own (Chores, Meal routine, Food notes): the two columns above are then not used, and a task is ticked where it stands and archived after the rollover.",
         "data": {
           "done_lists": "Done column",
-          "default_lists": "Column for new tasks"
+          "default_lists": "Column for new tasks",
+          "column_lists": "Each column is its own list"
         }
       },
       "routines": {
@@ -66,10 +67,11 @@
       },
       "lists": {
         "title": "Columns on {board}",
-        "description": "Ticking a task in Home Assistant moves its card to the Done column. New tasks are added to the second column you pick.",
+        "description": "Ticking a task in Home Assistant moves its card to the Done column. New tasks are added to the second column you pick.\n\nOr make every column a to-do list of its own (Chores, Meal routine, Food notes): the two columns above are then not used, and a task is ticked where it stands and archived after the rollover.",
         "data": {
           "done_lists": "Done column",
-          "default_lists": "Column for new tasks"
+          "default_lists": "Column for new tasks",
+          "column_lists": "Each column is its own list"
         }
       },
       "routines": {

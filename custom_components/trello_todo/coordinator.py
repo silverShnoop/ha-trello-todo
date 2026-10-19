@@ -21,6 +21,7 @@ from .api import TrelloAuthError, TrelloBoard, TrelloCard, TrelloClient, TrelloE
 from .const import (
     CONF_BOARDS,
     CONF_CARRY_OVER,
+    CONF_COLUMN_LISTS,
     CONF_DEFAULT_LISTS,
     CONF_DONE_LISTS,
     CONF_ROLLOVER,
@@ -90,11 +91,17 @@ class TrelloCoordinator(DataUpdateCoordinator[dict[str, TrelloBoard]]):
 
     def is_done(self, card: TrelloCard, board: TrelloBoard) -> bool:
         """Ticked (routine, or any card on a one-column board) or in the Done column."""
-        return is_done(card, board, self.done_list_id(board))
+        return is_done(card, board, self.done_list_id(board), self.columns_are_lists(board.id))
 
     def ticks_in_place(self, card: TrelloCard, board: TrelloBoard) -> bool:
         """Is finishing this card a tick rather than a move?"""
-        return ticks_in_place(card, board, self.done_list_id(board))
+        return ticks_in_place(
+            card, board, self.done_list_id(board), self.columns_are_lists(board.id)
+        )
+
+    def columns_are_lists(self, board_id: str) -> bool:
+        """Is every column on this board a to-do list of its own?"""
+        return board_id in self.config_entry.options.get(CONF_COLUMN_LISTS, [])
 
     @property
     def board_ids(self) -> list[str]:
@@ -159,7 +166,13 @@ class TrelloCoordinator(DataUpdateCoordinator[dict[str, TrelloBoard]]):
     async def _async_roll_over(self, board: TrelloBoard) -> None:
         """Advance any routine whose day has passed. Idempotent, so safe on every poll."""
         now = dt_util.now()
-        for update in plan_rollover(board, now, self.routine_settings, self.done_list_id(board)):
+        for update in plan_rollover(
+            board,
+            now,
+            self.routine_settings,
+            self.done_list_id(board),
+            self.columns_are_lists(board.id),
+        ):
             card = board.card_by_id(update.card_id)
             if card is None:
                 continue

@@ -1,4 +1,10 @@
-"""A native to-do entity per Trello board."""
+"""A native to-do entity per Trello board, or per column.
+
+A board is one list whose columns are stages (To do, Doing, Done), unless
+it is set up as a board of lists: then each column is a to-do list of its
+own (Chores, Meal routine, Food notes), and every card on it ticks in place,
+the way a card on a one-column board does.
+"""
 
 from __future__ import annotations
 
@@ -16,7 +22,11 @@ from homeassistant.components.todo import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
-from homeassistant.helpers import config_validation as cv, entity_platform
+from homeassistant.helpers import (
+    config_validation as cv,
+    entity_platform,
+    entity_registry as er,
+)
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
@@ -48,11 +58,41 @@ DAY_COLOURS = ("green", "yellow", "orange", "red", "purple", "blue", "sky")
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Add one to-do entity per selected board."""
+    """Add one to-do entity per selected board, or per column on a board of lists."""
     coordinator: TrelloCoordinator = entry.runtime_data.coordinator
-    async_add_entities(
-        TrelloBoardTodo(coordinator, board_id) for board_id in coordinator.data
-    )
+    known: set[str] = set()
+
+    def wanted() -> dict[str, TrelloBoardTodo]:
+        found: dict[str, TrelloBoardTodo] = {}
+        for board_id, board in coordinator.data.items():
+            if coordinator.columns_are_lists(board_id):
+                for lst in board.lists:
+                    found[f"{board_id}_{lst.id}"] = TrelloColumnTodo(coordinator, board_id, lst.id)
+            else:
+                found[board_id] = TrelloBoardTodo(coordinator, board_id)
+        return found
+
+    first = wanted()
+    # Switching a board between one list and a list per column leaves the
+    # other shape's entities behind; they would only sit there unavailable.
+    registry = er.async_get(hass)
+    for reg in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if reg.domain == "todo" and reg.unique_id not in first:
+            registry.async_remove(reg.entity_id)
+    known.update(first)
+    async_add_entities(first.values())
+
+    @callback
+    def _add_new_columns() -> None:
+        """A column added in Trello becomes a list without a reload."""
+        if not coordinator.data:
+            return
+        new = {k: v for k, v in wanted().items() if k not in known}
+        if new:
+            known.update(new)
+            async_add_entities(new.values())
+
+    entry.async_on_unload(coordinator.async_add_listener(_add_new_columns))
 
     platform = entity_platform.async_get_current_platform()
     platform.async_register_entity_service(
@@ -209,9 +249,21 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
                 return m
         raise ServiceValidationError(f"No member '{value}' on {self.board.name}")
 
+    def _lists(self) -> list[TrelloList]:
+        """The columns this entity shows."""
+        return self.board.lists
+
+    def _default_list_id(self) -> str | None:
+        """Where a new task goes."""
+        return self.coordinator.default_list_id(self.board)
+
+    def _done_list_id(self) -> str | None:
+        """Where a finished task goes."""
+        return self.coordinator.done_list_id(self.board)
+
     def _sorted_cards(self) -> list[TrelloCard]:
         board = self.board
-        order = {lst.id: i for i, lst in enumerate(board.lists)}
+        order = {lst.id: i for i, lst in enumerate(self._lists())}
         return sorted(
             (c for c in board.cards if c.list_id in order),
             key=lambda c: (self.coordinator.is_done(c, board), order[c.list_id], c.pos),
@@ -242,7 +294,7 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
 
     @callback
     def _update_items(self) -> None:
-        if self._board_id not in self.coordinator.data:
+        if not self.available:
             self._attr_todo_items = []
             return
         board = self.board
@@ -270,10 +322,10 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Everything the dashboard card needs to draw columns, people and labels."""
-        if self._board_id not in self.coordinator.data:
+        if not self.available:
             return {}
         board = self.board
-        done = self.coordinator.done_list_id(board)
+        done = self._done_list_id()
         return {
             "trello_board_id": board.id,
             "board_url": board.url,
@@ -286,8 +338,8 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
     def _board_attribute(self, board: TrelloBoard, done: str | None) -> dict[str, Any]:
         return {
             "done": done,
-            "default": self.coordinator.default_list_id(board),
-            "lists": [{"id": lst.id, "name": lst.name} for lst in board.lists],
+            "default": self._default_list_id(),
+            "lists": [{"id": lst.id, "name": lst.name} for lst in self._lists()],
             "members": [
                 {
                     "id": m.id,
@@ -327,11 +379,11 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
 
     async def async_create_todo_item(self, item: TodoItem) -> None:
         """Add a card to the default list."""
-        list_id = self.coordinator.default_list_id(self.board)
+        list_id = self._default_list_id()
         if list_id is None:
             raise HomeAssistantError(f"{self.board.name} has no lists to add to")
         if item.status == TodoItemStatus.COMPLETED:
-            list_id = self.coordinator.done_list_id(self.board) or list_id
+            list_id = self._done_list_id() or list_id
         await self._call(
             self.coordinator.client.create_card(
                 list_id,
@@ -480,9 +532,7 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
         the window that day, before the deadline; a full date and time sets
         it outright. Without it the card asks from the start of its day.
         """
-        list_id = (
-            self._resolve_list(list).id if list else self.coordinator.default_list_id(self.board)
-        )
+        list_id = self._resolve_list(list).id if list else self._default_list_id()
         if list_id is None:
             raise HomeAssistantError(f"{self.board.name} has no lists to add to")
         member_ids = [self._resolve_member(m).id for m in members or []]
@@ -506,3 +556,50 @@ class TrelloBoardTodo(CoordinatorEntity[TrelloCoordinator], TodoListEntity):
                 member_ids=member_ids, label_ids=label_ids,
             )
         )
+
+
+class TrelloColumnTodo(TrelloBoardTodo):
+    """One column of a board of lists. Every card ticks in place.
+
+    The board's labels and members are shared, so routines, assignees and
+    `add_card` work exactly as on a board of their own; `list` on a service
+    can still name another column, which moves a card onto that list.
+    """
+
+    def __init__(self, coordinator: TrelloCoordinator, board_id: str, list_id: str) -> None:
+        """Initialise."""
+        self._list_id = list_id
+        super().__init__(coordinator, board_id)
+        self._attr_unique_id = f"{board_id}_{list_id}"
+
+    @property
+    def name(self) -> str | None:
+        """The column's name, which follows a rename in Trello."""
+        if self._board_id in self.coordinator.data and (
+            lst := self.board.list_by_id(self._list_id)
+        ):
+            return lst.name
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Unavailable if the column has gone (archived or moved off the board)."""
+        return super().available and self.board.list_by_id(self._list_id) is not None
+
+    def _lists(self) -> list[TrelloList]:
+        lst = self.board.list_by_id(self._list_id)
+        return [lst] if lst else []
+
+    def _default_list_id(self) -> str | None:
+        return self._list_id
+
+    def _done_list_id(self) -> str | None:
+        return self._list_id
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """As for a board, plus which column this is."""
+        attrs = super().extra_state_attributes
+        if attrs:
+            attrs["trello_list_id"] = self._list_id
+        return attrs

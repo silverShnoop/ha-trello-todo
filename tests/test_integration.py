@@ -16,6 +16,7 @@ from homeassistant.setup import async_setup_component
 from custom_components.trello_todo.const import (
     CONF_BOARDS,
     CONF_CARRY_OVER,
+    CONF_COLUMN_LISTS,
     CONF_DEFAULT_LISTS,
     CONF_DONE_LISTS,
     CONF_ROLLOVER,
@@ -58,7 +59,9 @@ async def test_config_flow(hass: HomeAssistant, trello) -> None:
     assert result["description_placeholders"]["board"] == "Chores"
     # Defaults guessed: Done column = "Done", new tasks = first column.
     schema = {str(k): k.default() for k in result["data_schema"].schema}
-    assert schema == {CONF_DONE_LISTS: "l_done", CONF_DEFAULT_LISTS: "l_todo"}
+    assert schema == {
+        CONF_DONE_LISTS: "l_done", CONF_DEFAULT_LISTS: "l_todo", CONF_COLUMN_LISTS: False,
+    }
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_DONE_LISTS: "l_done", CONF_DEFAULT_LISTS: "l_todo"}
     )
@@ -74,6 +77,7 @@ async def test_config_flow(hass: HomeAssistant, trello) -> None:
         CONF_USE_WEBHOOK: False,
         CONF_DONE_LISTS: {BOARD_ID: "l_done"},
         CONF_DEFAULT_LISTS: {BOARD_ID: "l_todo"},
+        CONF_COLUMN_LISTS: [],
         CONF_ROLLOVER: "04:00:00",
         CONF_ROUTINE_DEFAULT_TIME: "18:00:00",
         CONF_CARRY_OVER: True,
